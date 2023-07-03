@@ -27,7 +27,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
-from model import GPTConfig, GPT
+from model.model import GPTConfig, GPT
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -77,17 +77,20 @@ dtype = (
 )  # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True  # use PyTorch 2.0 to compile the model to be faster
 # -----------------------------------------------------------------------------
+
 config_keys = [
     k
     for k, v in globals().items()
     if not k.startswith("_") and isinstance(v, (int, float, bool, str))
 ]
 exec(open("configurator.py").read())  # overrides from command line or config file
+
 config = {k: globals()[k] for k in config_keys}  # will be useful for logging
 # -----------------------------------------------------------------------------
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get("RANK", -1)) != -1  # is this a ddp run?
+
 if ddp:
     init_process_group(backend=backend)
     ddp_rank = int(os.environ["RANK"])
@@ -101,26 +104,36 @@ if ddp:
     # down the desired gradient accumulation iterations per process proportionally
     assert gradient_accumulation_steps % ddp_world_size == 0
     gradient_accumulation_steps //= ddp_world_size
+
 else:
     # if not ddp, we are running on a single gpu, and one process
     master_process = True
     seed_offset = 0
     ddp_world_size = 1
+
 tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * block_size
+
 print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
+
 torch.manual_seed(1337 + seed_offset)
+
 torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
+
 torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
+
 device_type = "cuda" if "cuda" in device else "cpu"  # for later use in torch.autocast
+
 # note: float16 data type will automatically use a GradScaler
+
 ptdtype = {
     "float32": torch.float32,
     "bfloat16": torch.bfloat16,
     "float16": torch.float16,
 }[dtype]
+
 ctx = (
     nullcontext()
     if device_type == "cpu"
@@ -129,7 +142,9 @@ ctx = (
 
 # poor man's data loader
 data_dir = os.path.join("data", dataset)
+
 train_data = np.memmap(os.path.join(data_dir, "train.bin"), dtype=np.uint16, mode="r")
+
 val_data = np.memmap(os.path.join(data_dir, "val.bin"), dtype=np.uint16, mode="r")
 
 
@@ -157,11 +172,14 @@ def get_batch(split):
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
+
 best_val_loss = 1e9
 
 # attempt to derive vocab_size from the dataset
 meta_path = os.path.join(data_dir, "meta.pkl")
+
 meta_vocab_size = None
+
 if os.path.exists(meta_path):
     with open(meta_path, "rb") as f:
         meta = pickle.load(f)
@@ -178,6 +196,7 @@ model_args = dict(
     vocab_size=None,
     dropout=dropout,
 )  # start with model_args from command line
+
 if init_from == "scratch":
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -189,6 +208,7 @@ if init_from == "scratch":
     model_args["vocab_size"] = meta_vocab_size if meta_vocab_size is not None else 50304
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
+
 elif init_from == "resume":
     print(f"Resuming training from {out_dir}")
     # resume training from a checkpoint.
@@ -212,6 +232,7 @@ elif init_from == "resume":
     model.load_state_dict(state_dict)
     iter_num = checkpoint["iter_num"]
     best_val_loss = checkpoint["best_val_loss"]
+
 elif init_from.startswith("gpt2"):
     print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
     # initialize from OpenAI GPT-2 weights
@@ -220,12 +241,14 @@ elif init_from.startswith("gpt2"):
     # read off the created config params, so we can store them into checkpoint correctly
     for k in ["n_layer", "n_head", "n_embd", "block_size", "bias", "vocab_size"]:
         model_args[k] = getattr(model.config, k)
+
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
     model_args[
         "block_size"
     ] = block_size  # so that the checkpoint will have the right value
+
 model.to(device)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
@@ -235,6 +258,7 @@ scaler = torch.cuda.amp.GradScaler(enabled=(dtype == "float16"))
 optimizer = model.configure_optimizers(
     weight_decay, learning_rate, (beta1, beta2), device_type
 )
+
 if init_from == "resume":
     optimizer.load_state_dict(checkpoint["optimizer"])
 checkpoint = None  # free up memory
@@ -248,7 +272,6 @@ if compile:
 # wrap model into DDP container
 if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
-
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
@@ -266,7 +289,6 @@ def estimate_loss():
     model.train()
     return out
 
-
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
@@ -281,7 +303,6 @@ def get_lr(it):
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # coeff ranges 0..1
     return min_lr + coeff * (learning_rate - min_lr)
 
-
 # logging
 if wandb_log and master_process:
     import wandb
@@ -290,10 +311,15 @@ if wandb_log and master_process:
 
 # training loop
 X, Y = get_batch("train")  # fetch the very first batch
+
 t0 = time.time()
+
 local_iter_num = 0  # number of iterations in the lifetime of this process
+
 raw_model = model.module if ddp else model  # unwrap DDP container if needed
+
 running_mfu = -1.0
+
 while True:
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate

@@ -1,0 +1,11 @@
+MANIFEST.in
+README.md
+requirements.txt
+setup.py
+nanoGPT.egg-info/PKG-INFO
+nanoGPT.egg-info/SOURCES.txt
+nanoGPT.egg-info/dependency_links.txt
+nanoGPT.egg-info/not-zip-safe
+nanoGPT.egg-info/requires.txt
+nanoGPT.egg-info/top_level.txt
+scripts/nanoGPT-run

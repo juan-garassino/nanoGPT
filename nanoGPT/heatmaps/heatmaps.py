@@ -2,17 +2,27 @@ import os
 import datetime
 import matplotlib.pyplot as plt
 
-def plot_heatmaps(data, output_folder, title_font_size=12, subtitle_font_size=10, figsize=(120, 40), dpi=100,
+def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle_font_size=10, figsize=(120, 40), dpi=100,
                   row_spacing=0.2, column_spacing=0.2, title_spacing=0.4, subtitle_spacing=0.3, tick_font_size=8):
     # Create the output folder if it doesn't exist
-    os.makedirs(output_folder, exist_ok=True)
+
+    output_path = os.path.join(os.environ.get('HOME'), 'Code', 'juan-garassino', 'mySandbox', 'nanoGPT', 'plots', output_folder)
+
+    os.makedirs(output_path, exist_ok=True)
+
+    for number, key in enumerate(data.keys()):
+        print(number +1, key)
 
     # Retrieve the keys of the linear layers
     linear_layer_keys = [key for key in data.keys() if key.endswith('.weight')]
 
     # Calculate the number of linear layers and heads
+
     num_layers = len(linear_layer_keys) // 4
-    num_heads = 4
+
+    print(num_layers)
+
+    print(num_heads)
 
     # Create the subplot grid
     fig, axes = plt.subplots(num_layers, num_heads, figsize=figsize, dpi=dpi)
@@ -50,8 +60,8 @@ def plot_heatmaps(data, output_folder, title_font_size=12, subtitle_font_size=10
     fig.tight_layout()
 
     # Save the plot with timestamp in the output folder
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    output_path = os.path.join(output_folder, f'heatmaps[{timestamp}].png')
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    output_path = os.path.join(os.environ.get('HOME'), 'Code', 'juan-garassino', 'mySandbox', 'nanoGPT', 'plots', output_folder, f'heatmaps[{timestamp}].png')
     plt.savefig(output_path, dpi=dpi)
     plt.close(fig)
 

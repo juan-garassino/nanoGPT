@@ -1,0 +1,17 @@
+[project]
+name = "nanogpt-1"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "torch",
+  "numpy",
+  "transformers",
+  "datasets",
+  "tiktoken",
+  "wandb",
+  "tqdm",
+  "black",
+  "matplotlib",]
+
+[tool.uv]
+package = false

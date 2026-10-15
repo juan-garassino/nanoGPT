@@ -10,6 +10,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 import math
 import inspect
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -27,12 +28,12 @@ class LayerNorm(nn.Module):
         If True, learn an additive bias of shape ``(ndim,)``; otherwise none.
     """
 
-    def __init__(self, ndim, bias):
+    def __init__(self, ndim: int, bias: bool):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(ndim))
         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Normalise over the last dimension.
 
         Parameters
@@ -61,7 +62,7 @@ class CausalSelfAttention(nn.Module):
         ``bias``, ``dropout`` and ``block_size``.
     """
 
-    def __init__(self, config):
+    def __init__(self, config: "GPTConfig"):
         super().__init__()
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
@@ -88,7 +89,7 @@ class CausalSelfAttention(nn.Module):
                 ),
             )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply causal self-attention.
 
         Parameters
@@ -156,14 +157,14 @@ class MLP(nn.Module):
         Uses ``n_embd``, ``bias`` and ``dropout``.
     """
 
-    def __init__(self, config):
+    def __init__(self, config: "GPTConfig"):
         super().__init__()
         self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         self.gelu = nn.GELU()
         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply the feed-forward network.
 
         Parameters
@@ -192,14 +193,14 @@ class Block(nn.Module):
         Model hyper-parameters, passed on to the sub-modules.
     """
 
-    def __init__(self, config):
+    def __init__(self, config: "GPTConfig"):
         super().__init__()
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run the block.
 
         Parameters
@@ -257,7 +258,7 @@ class GPT(nn.Module):
         Model hyper-parameters; ``vocab_size`` and ``block_size`` must be set.
     """
 
-    def __init__(self, config):
+    def __init__(self, config: "GPTConfig"):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
@@ -293,7 +294,7 @@ class GPT(nn.Module):
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params() / 1e6,))
 
-    def get_num_params(self, non_embedding=True):
+    def get_num_params(self, non_embedding: bool = True) -> int:
         """
         Return the number of parameters in the model.
         For non-embedding count (default), the position embeddings get subtracted.
@@ -323,7 +324,8 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None
+                ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Compute logits and, if ``targets`` is given, the cross-entropy loss.
 
         Parameters
@@ -371,7 +373,7 @@ class GPT(nn.Module):
 
         return logits, loss
 
-    def crop_block_size(self, block_size):
+    def crop_block_size(self, block_size: int) -> None:
         """Reduce the context length in place.
 
         Parameters
@@ -392,7 +394,7 @@ class GPT(nn.Module):
                 block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]
 
     @classmethod
-    def from_pretrained(cls, model_type, override_args=None):
+    def from_pretrained(cls, model_type: str, override_args: Optional[dict] = None) -> "GPT":
         """Build a :class:`GPT` and load OpenAI GPT-2 weights via ``transformers``.
 
         Parameters
@@ -477,7 +479,8 @@ class GPT(nn.Module):
 
         return model
 
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+    def configure_optimizers(self, weight_decay: float, learning_rate: float, betas: Tuple[float, float],
+                             device_type: str) -> torch.optim.AdamW:
         """Create an AdamW optimiser; tensors with ``dim >= 2`` get weight decay.
 
         Parameters
@@ -526,7 +529,7 @@ class GPT(nn.Module):
 
         return optimizer
 
-    def estimate_mfu(self, fwdbwd_per_iter, dt):
+    def estimate_mfu(self, fwdbwd_per_iter: int, dt: float) -> float:
         """Estimate model flops utilisation (MFU) as a fraction of A100 bfloat16 peak FLOPS.
 
         Parameters
@@ -556,7 +559,8 @@ class GPT(nn.Module):
         return mfu
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    def generate(self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0,
+                 top_k: Optional[int] = None) -> torch.Tensor:
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.

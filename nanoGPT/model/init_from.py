@@ -2,10 +2,13 @@
 
 
 from nanoGPT.model.model import GPT, GPTConfig
-import torch
 import os
+from typing import Optional
 
-def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=None):
+import torch
+
+def initialize_model(init_from: str, out_dir: str, device: str, model_args: dict,
+                     meta_vocab_size: Optional[int] = None) -> tuple:
     """Create a :class:`~nanoGPT.model.model.GPT` from scratch, a checkpoint, or GPT-2 weights.
 
     Parameters

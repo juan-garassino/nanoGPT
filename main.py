@@ -8,19 +8,17 @@ $ python main.py
 import argparse
 import torch
 import os
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 import time
 from contextlib import nullcontext
 import numpy as np
 
-from nanoGPT.sourcing.sourcing import sourcing_data, get_batch
-from nanoGPT.model.model import GPT, GPTConfig
+from nanoGPT.sourcing.sourcing import get_batch
 from nanoGPT.model.init_from import initialize_model
 from nanoGPT.model.tools import get_lr, estimate_loss
 from nanoGPT.heatmaps.heatmaps import plot_heatmaps
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """Build the command-line parser for the training options and parse ``sys.argv``.
 
     Returns

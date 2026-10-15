@@ -7,7 +7,7 @@ import pickle
 
 from nanoGPT.sourcing.sourcing import sourcing_data
 
-def character_tokenizer(data):
+def character_tokenizer(data: str) -> None:
     """Encode text at character level and write the splits next to this module.
 
     The first 90% of ``data`` is the train split, the rest validation. Writes

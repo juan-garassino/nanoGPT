@@ -3,10 +3,15 @@
 
 import os
 import datetime
-import matplotlib.pyplot as plt
+from typing import Dict, Tuple
 
-def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle_font_size=10, figsize=(120, 40), dpi=100,
-                  row_spacing=0.2, column_spacing=0.2, title_spacing=0.4, subtitle_spacing=0.3, tick_font_size=8):
+import matplotlib.pyplot as plt
+import torch
+
+def plot_heatmaps(data: Dict[str, torch.Tensor], output_folder: str, num_heads: int = 4, title_font_size: int = 12,
+                  subtitle_font_size: int = 10, figsize: Tuple[int, int] = (120, 40), dpi: int = 100,
+                  row_spacing: float = 0.2, column_spacing: float = 0.2, title_spacing: float = 0.4,
+                  subtitle_spacing: float = 0.3, tick_font_size: int = 8) -> None:
     """Save a grid of heatmaps of a model's ``*.weight`` tensors as a timestamped PNG.
 
     The grid has ``len(weight keys) // 4`` rows and ``num_heads`` columns, and the
@@ -90,7 +95,7 @@ def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle
 
     # Save the plot with timestamp in the output folder
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    output_path = os.path.join(os.environ.get('HOME'), 'Code', 'juan-garassino', 'mySandbox', 'nanoGPT', 'plots', output_folder, f'heatmaps[{timestamp}].png')
+    output_path = os.path.join(output_path, f'heatmaps[{timestamp}].png')
     plt.savefig(output_path, dpi=dpi)
     plt.close(fig)
 

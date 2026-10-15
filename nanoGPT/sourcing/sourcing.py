@@ -1,12 +1,14 @@
 """Text loading and random batch sampling from tokenised ``.bin`` files."""
 
 
-import torch
-import numpy as np
 import os
-import requests
+from typing import Optional, Tuple
 
-def sourcing_data(txt_folder=None):
+import numpy as np
+import requests
+import torch
+
+def sourcing_data(txt_folder: Optional[str] = None) -> str:
     """Load raw text.
 
     Parameters
@@ -43,7 +45,8 @@ def sourcing_data(txt_folder=None):
     return data
 
 
-def get_batch(train_data, val_data, split, batch_size, block_size, device_type, device):
+def get_batch(train_data: np.ndarray, val_data: np.ndarray, split: str, batch_size: int, block_size: int,
+              device_type: str, device: str) -> Tuple[torch.Tensor, torch.Tensor]:
     """Sample a random batch of next-token-prediction pairs.
 
     Parameters

@@ -18,7 +18,7 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
         print(f"Resuming training from {out_dir}")
         # Resume training from a checkpoint
         ckpt_path = os.path.join(out_dir, "ckpt.pt")
-        checkpoint = torch.load(ckpt_path, map_location=device)
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
         checkpoint_model_args = checkpoint["model_args"]
         # Force these config attributes to be equal; otherwise, we can't even resume training
         # The rest of the attributes (e.g., dropout) can stay as desired from the command line

@@ -32,6 +32,7 @@ def parse_args():
 
     # Data
     parser.add_argument("--dataset", type=str, default="shakespeare_char", help="Dataset name")
+    parser.add_argument("--data_dir", type=str, default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "nanoGPT", "data"), help="Root folder holding <dataset>/train.bin and val.bin")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=5 * 8, help="Number of gradient accumulation steps")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size") # 12
     parser.add_argument("--block_size", type=int, default=8, help="Block size") # 1024
@@ -73,15 +74,8 @@ args = parse_args()
 
 print(args)
 
-config_keys = [
-    k
-    for k, v in globals().items()
-    if not k.startswith("_") and isinstance(v, (int, float, bool, str))
-]
-
-exec(open(f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/configurator/configurator.py").read())  # overrides from command line or config file
-
-config = {k: globals()[k] for k in config_keys}  # will be useful for logging
+# NOTE: overrides now come from argparse; the old exec() of a hardcoded configurator path was removed
+config = vars(args)  # will be useful for logging
 
 ddp = int(os.environ.get("RANK", -1)) != -1  # is this a ddp run?
 
@@ -140,11 +134,14 @@ model_args = dict(
     dropout=args.dropout,
 )  # start with model_args from command line
 
-if args.init_from == 'scratch':
+if args.init_from == 'resume':
+    # initialize_model returns (model, model_args, iter_num, best_val_loss) for resume
+    model, model_args, iter_num, best_val_loss = initialize_model(args.init_from, args.out_dir, args.device, model_args)
+else:  # 'scratch' or 'gpt2*'
     model, model_args = initialize_model(args.init_from, args.out_dir, args.device, model_args)
 
-if args.init_from == 'resume':
-    model, model_args, best_val_loss, iter_num = initialize_model(args.init_from, args.out_dir, args.device, model_args)
+model.to(args.device)
+os.makedirs(args.out_dir, exist_ok=True)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == "float16"))
@@ -162,7 +159,7 @@ if args.wandb_log and master_process:
 
     wandb.init(project=args.wandb_project, name=args.wandb_run_name, config=config)
 
-data_dir = os.path.join(f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/data", args.dataset)
+data_dir = os.path.join(args.data_dir, args.dataset)
 
 train_data = np.memmap(os.path.join(data_dir, "train.bin"), dtype=np.uint16, mode="r")
 
@@ -180,7 +177,11 @@ print('loop')
 
 while True:
     # determine and set the learning rate for this iteration
-    lr = get_lr(iter_num) if args.decay_lr else args.learning_rate
+    lr = (
+        get_lr(iter_num, args.warmup_iters, args.learning_rate, args.lr_decay_iters, args.min_lr)
+        if args.decay_lr
+        else args.learning_rate
+    )
 
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr

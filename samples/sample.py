@@ -51,7 +51,7 @@ ctx = (
 if init_from == "resume":
     # init from a model saved in a specific directory
     ckpt_path = os.path.join(out_dir, "ckpt.pt")
-    checkpoint = torch.load(ckpt_path, map_location=device)
+    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
     gptconf = GPTConfig(**checkpoint["model_args"])
     model = GPT(gptconf)
     state_dict = checkpoint["model"]

@@ -10,7 +10,7 @@ def sourcing_data(txt_folder=None):
         if not os.path.exists(input_file_path):
             data_url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
             with open(input_file_path, "w") as f:
-                f.write(requests.get(data_url).text)
+                f.write(requests.get(data_url, timeout=60).text)
 
         with open(input_file_path, "r") as f:
             data = f.read()

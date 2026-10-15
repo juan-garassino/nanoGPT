@@ -1,11 +1,11 @@
 """Character-level tokenisation of a text corpus into ``train.bin`` / ``val.bin`` / ``meta.pkl``."""
 
-
 import os
 import numpy as np
 import pickle
 
 from nanoGPT.sourcing.sourcing import sourcing_data
+
 
 def character_tokenizer(data: str) -> None:
     """Encode text at character level and write the splits next to this module.
@@ -62,6 +62,7 @@ def character_tokenizer(data: str) -> None:
     }
     with open(os.path.join(os.path.dirname(__file__), "meta.pkl"), "wb") as f:
         pickle.dump(meta, f)
+
 
 if __name__ == "__main__":
     # Sourcing the data

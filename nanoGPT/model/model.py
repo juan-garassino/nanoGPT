@@ -241,12 +241,16 @@ class GPTConfig:
     """
 
     block_size: int = 1024
-    vocab_size: int = 50304  # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
+    vocab_size: int = (
+        50304  # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
+    )
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
     dropout: float = 0.0
-    bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    bias: bool = (
+        True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    )
 
 
 class GPT(nn.Module):
@@ -324,8 +328,9 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None
-                ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def forward(
+        self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Compute logits and, if ``targets`` is given, the cross-entropy loss.
 
         Parameters
@@ -394,7 +399,9 @@ class GPT(nn.Module):
                 block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]
 
     @classmethod
-    def from_pretrained(cls, model_type: str, override_args: Optional[dict] = None) -> "GPT":
+    def from_pretrained(
+        cls, model_type: str, override_args: Optional[dict] = None
+    ) -> "GPT":
         """Build a :class:`GPT` and load OpenAI GPT-2 weights via ``transformers``.
 
         Parameters
@@ -479,8 +486,13 @@ class GPT(nn.Module):
 
         return model
 
-    def configure_optimizers(self, weight_decay: float, learning_rate: float, betas: Tuple[float, float],
-                             device_type: str) -> torch.optim.AdamW:
+    def configure_optimizers(
+        self,
+        weight_decay: float,
+        learning_rate: float,
+        betas: Tuple[float, float],
+        device_type: str,
+    ) -> torch.optim.AdamW:
         """Create an AdamW optimiser; tensors with ``dim >= 2`` get weight decay.
 
         Parameters
@@ -559,8 +571,13 @@ class GPT(nn.Module):
         return mfu
 
     @torch.no_grad()
-    def generate(self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0,
-                 top_k: Optional[int] = None) -> torch.Tensor:
+    def generate(
+        self,
+        idx: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+    ) -> torch.Tensor:
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.

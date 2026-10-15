@@ -1,10 +1,10 @@
 """GPT-2 BPE tokenisation of a text corpus into ``train.bin`` / ``val.bin``."""
 
-
 import os
 import tiktoken
 import numpy as np
 from nanoGPT.sourcing.sourcing import sourcing_data
+
 
 def subword_tokenizer(data: str) -> None:
     """Encode text with the GPT-2 BPE (tiktoken) and write the splits next to this module.

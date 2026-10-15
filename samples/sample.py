@@ -1,6 +1,7 @@
 """
 Sample from a trained model
 """
+
 import os
 import pickle
 from contextlib import nullcontext

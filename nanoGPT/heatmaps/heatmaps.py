@@ -1,6 +1,5 @@
 """Weight-matrix heatmap plotting for GPT state dicts."""
 
-
 import os
 import datetime
 from typing import Dict, Tuple
@@ -8,10 +7,21 @@ from typing import Dict, Tuple
 import matplotlib.pyplot as plt
 import torch
 
-def plot_heatmaps(data: Dict[str, torch.Tensor], output_folder: str, num_heads: int = 4, title_font_size: int = 12,
-                  subtitle_font_size: int = 10, figsize: Tuple[int, int] = (120, 40), dpi: int = 100,
-                  row_spacing: float = 0.2, column_spacing: float = 0.2, title_spacing: float = 0.4,
-                  subtitle_spacing: float = 0.3, tick_font_size: int = 8) -> None:
+
+def plot_heatmaps(
+    data: Dict[str, torch.Tensor],
+    output_folder: str,
+    num_heads: int = 4,
+    title_font_size: int = 12,
+    subtitle_font_size: int = 10,
+    figsize: Tuple[int, int] = (120, 40),
+    dpi: int = 100,
+    row_spacing: float = 0.2,
+    column_spacing: float = 0.2,
+    title_spacing: float = 0.4,
+    subtitle_spacing: float = 0.3,
+    tick_font_size: int = 8,
+) -> None:
     """Save a grid of heatmaps of a model's ``*.weight`` tensors as a timestamped PNG.
 
     The grid has ``len(weight keys) // 4`` rows and ``num_heads`` columns, and the
@@ -46,15 +56,23 @@ def plot_heatmaps(data: Dict[str, torch.Tensor], output_folder: str, num_heads: 
     tick_font_size : int
         Font size of axis ticks.
     """
-    output_path = os.path.join(os.environ.get('HOME'), 'Code', 'juan-garassino', 'mySandbox', 'nanoGPT', 'plots', output_folder)
+    output_path = os.path.join(
+        os.environ.get("HOME"),
+        "Code",
+        "juan-garassino",
+        "mySandbox",
+        "nanoGPT",
+        "plots",
+        output_folder,
+    )
 
     os.makedirs(output_path, exist_ok=True)
 
     for number, key in enumerate(data.keys()):
-        print(number +1, key)
+        print(number + 1, key)
 
     # Retrieve the keys of the linear layers
-    linear_layer_keys = [key for key in data.keys() if key.endswith('.weight')]
+    linear_layer_keys = [key for key in data.keys() if key.endswith(".weight")]
 
     # Calculate the number of linear layers and heads
 
@@ -68,7 +86,9 @@ def plot_heatmaps(data: Dict[str, torch.Tensor], output_folder: str, num_heads: 
     fig, axes = plt.subplots(num_layers, num_heads, figsize=figsize, dpi=dpi)
 
     # Adjust the row and column spacing
-    fig.subplots_adjust(hspace=row_spacing, wspace=column_spacing, top=1 - title_spacing / figsize[1])
+    fig.subplots_adjust(
+        hspace=row_spacing, wspace=column_spacing, top=1 - title_spacing / figsize[1]
+    )
 
     # Iterate over the linear layers and plot the heatmaps
     for i, layer_key in enumerate(linear_layer_keys):
@@ -85,17 +105,22 @@ def plot_heatmaps(data: Dict[str, torch.Tensor], output_folder: str, num_heads: 
         layer_idx = i % num_layers
         head_idx = i // num_layers
 
-        axes[layer_idx, head_idx].imshow(weights_np, cmap='hot')
-        axes[layer_idx, head_idx].set_title(f"Layer: {layer_idx}\nHead: {head_idx+1}", fontsize=subtitle_font_size,
-                                            pad=subtitle_spacing)
+        axes[layer_idx, head_idx].imshow(weights_np, cmap="hot")
+        axes[layer_idx, head_idx].set_title(
+            f"Layer: {layer_idx}\nHead: {head_idx+1}",
+            fontsize=subtitle_font_size,
+            pad=subtitle_spacing,
+        )
 
-        axes[layer_idx, head_idx].tick_params(axis='both', which='both', labelsize=tick_font_size)
+        axes[layer_idx, head_idx].tick_params(
+            axis="both", which="both", labelsize=tick_font_size
+        )
 
     fig.tight_layout()
 
     # Save the plot with timestamp in the output folder
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    output_path = os.path.join(output_path, f'heatmaps[{timestamp}].png')
+    output_path = os.path.join(output_path, f"heatmaps[{timestamp}].png")
     plt.savefig(output_path, dpi=dpi)
     plt.close(fig)
 

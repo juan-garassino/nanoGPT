@@ -1,14 +1,19 @@
 """Model construction: from scratch, from a ``ckpt.pt`` checkpoint, or from GPT-2 weights."""
 
-
 from nanoGPT.model.model import GPT, GPTConfig
 import os
 from typing import Optional
 
 import torch
 
-def initialize_model(init_from: str, out_dir: str, device: str, model_args: dict,
-                     meta_vocab_size: Optional[int] = None) -> tuple:
+
+def initialize_model(
+    init_from: str,
+    out_dir: str,
+    device: str,
+    model_args: dict,
+    meta_vocab_size: Optional[int] = None,
+) -> tuple:
     """Create a :class:`~nanoGPT.model.model.GPT` from scratch, a checkpoint, or GPT-2 weights.
 
     Parameters
@@ -35,8 +40,12 @@ def initialize_model(init_from: str, out_dir: str, device: str, model_args: dict
         print("Initializing a new model from scratch")
         # Determine the vocab size we'll use for from-scratch training
         if meta_vocab_size is None:
-            print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
-        model_args["vocab_size"] = meta_vocab_size if meta_vocab_size is not None else 50304
+            print(
+                "defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)"
+            )
+        model_args["vocab_size"] = (
+            meta_vocab_size if meta_vocab_size is not None else 50304
+        )
         gptconf = GPTConfig(**model_args)
         model = GPT(gptconf)
         return model, model_args
@@ -58,7 +67,7 @@ def initialize_model(init_from: str, out_dir: str, device: str, model_args: dict
         unwanted_prefix = "_orig_mod."
         for k, v in list(state_dict.items()):
             if k.startswith(unwanted_prefix):
-                state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+                state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
         model.load_state_dict(state_dict)
         iter_num = checkpoint["iter_num"]
         best_val_loss = checkpoint["best_val_loss"]

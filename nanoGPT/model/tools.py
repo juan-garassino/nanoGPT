@@ -1,6 +1,5 @@
 """Training helpers: loss estimation and the learning-rate schedule."""
 
-
 from contextlib import AbstractContextManager
 from typing import Dict
 
@@ -9,10 +8,19 @@ import torch
 from nanoGPT.sourcing.sourcing import get_batch
 import math
 
+
 @torch.no_grad()
-def estimate_loss(model: torch.nn.Module, train_data: np.ndarray, val_data: np.ndarray, eval_iters: int,
-                  batch_size: int, block_size: int, device_type: str, device: str,
-                  ctx: AbstractContextManager) -> Dict[str, torch.Tensor]:
+def estimate_loss(
+    model: torch.nn.Module,
+    train_data: np.ndarray,
+    val_data: np.ndarray,
+    eval_iters: int,
+    batch_size: int,
+    block_size: int,
+    device_type: str,
+    device: str,
+    ctx: AbstractContextManager,
+) -> Dict[str, torch.Tensor]:
     """Average the loss over ``eval_iters`` random batches for each split.
 
     Puts ``model`` in eval mode for the measurement and back in train mode after.
@@ -44,7 +52,9 @@ def estimate_loss(model: torch.nn.Module, train_data: np.ndarray, val_data: np.n
     for split in ["train", "val"]:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(train_data, val_data, split, batch_size, block_size, device_type, device)
+            X, Y = get_batch(
+                train_data, val_data, split, batch_size, block_size, device_type, device
+            )
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
@@ -52,7 +62,10 @@ def estimate_loss(model: torch.nn.Module, train_data: np.ndarray, val_data: np.n
     model.train()
     return out
 
-def get_lr(it: int, warmup_iters: int, learning_rate: float, lr_decay_iters: int, min_lr: float) -> float:
+
+def get_lr(
+    it: int, warmup_iters: int, learning_rate: float, lr_decay_iters: int, min_lr: float
+) -> float:
     """Learning rate at iteration ``it``: linear warmup, then cosine decay to ``min_lr``.
 
     Parameters

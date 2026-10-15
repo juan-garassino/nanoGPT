@@ -246,9 +246,9 @@ elif init_from.startswith("gpt2"):
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
-    model_args[
-        "block_size"
-    ] = block_size  # so that the checkpoint will have the right value
+    model_args["block_size"] = (
+        block_size  # so that the checkpoint will have the right value
+    )
 
 model.to(device)
 
@@ -275,6 +275,7 @@ if compile:
 if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
 
+
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss():
@@ -292,6 +293,7 @@ def estimate_loss():
     model.train()
     return out
 
+
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
     """Return the learning rate (float) at iteration ``it`` from the global schedule settings."""
@@ -306,6 +308,7 @@ def get_lr(it):
     assert 0 <= decay_ratio <= 1
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # coeff ranges 0..1
     return min_lr + coeff * (learning_rate - min_lr)
+
 
 # logging
 if wandb_log and master_process:

@@ -149,6 +149,7 @@ val_data = np.memmap(os.path.join(data_dir, "val.bin"), dtype=np.uint16, mode="r
 
 
 def get_batch(split):
+    """Return ``(x, y)`` int64 tensors of shape ``(batch_size, block_size)`` for ``split`` ("train" or "val")."""
     data = train_data if split == "train" else val_data
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack(
@@ -277,6 +278,7 @@ if ddp:
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss():
+    """Return ``{"train": loss, "val": loss}`` averaged over ``eval_iters`` batches (scalar tensors)."""
     out = {}
     model.eval()
     for split in ["train", "val"]:
@@ -292,6 +294,7 @@ def estimate_loss():
 
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
+    """Return the learning rate (float) at iteration ``it`` from the global schedule settings."""
     # 1) linear warmup for warmup_iters steps
     if it < warmup_iters:
         return learning_rate * it / warmup_iters

@@ -1,3 +1,10 @@
+"""Training entry point: builds a GPT from scratch or a checkpoint, trains it with AdamW,
+periodically evaluates and checkpoints, and saves weight heatmaps after each iteration.
+
+Run without command-line options (see README, "Known limitations"):
+$ python main.py
+"""
+
 import argparse
 import torch
 import os
@@ -14,6 +21,13 @@ from nanoGPT.model.tools import get_lr, estimate_loss
 from nanoGPT.heatmaps.heatmaps import plot_heatmaps
 
 def parse_args():
+    """Build the command-line parser for the training options and parse ``sys.argv``.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed options (see ``python main.py --help``).
+    """
     parser = argparse.ArgumentParser(description="GPT2 Training Configuration")
 
     # I/O

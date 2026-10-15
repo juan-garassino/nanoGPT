@@ -1,9 +1,46 @@
+"""Weight-matrix heatmap plotting for GPT state dicts."""
+
+
 import os
 import datetime
 import matplotlib.pyplot as plt
 
 def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle_font_size=10, figsize=(120, 40), dpi=100,
                   row_spacing=0.2, column_spacing=0.2, title_spacing=0.4, subtitle_spacing=0.3, tick_font_size=8):
+    """Save a grid of heatmaps of a model's ``*.weight`` tensors as a timestamped PNG.
+
+    The grid has ``len(weight keys) // 4`` rows and ``num_heads`` columns, and the
+    figure is written to
+    ``$HOME/Code/juan-garassino/mySandbox/nanoGPT/plots/<output_folder>/heatmaps[<timestamp>].png``.
+    Panels are indexed ``row = i % rows``, ``col = i // rows``, so the number of
+    weight tensors must not exceed ``rows * num_heads``.
+
+    Parameters
+    ----------
+    data : dict of {str: torch.Tensor}
+        State dict (e.g. ``model.state_dict()``); each ``*.weight`` tensor is
+        flattened to 2-D with shape ``(shape[0], -1)``.
+    output_folder : str
+        Sub-folder of ``plots/`` to write into; created if missing.
+    num_heads : int, default 4
+        Number of columns in the grid.
+    title_font_size : int
+        Unused.
+    subtitle_font_size : int
+        Font size of each panel title.
+    figsize : tuple of int
+        Figure size in inches ``(width, height)``.
+    dpi : int
+        Resolution of the figure and the saved PNG.
+    row_spacing, column_spacing : float
+        ``hspace`` / ``wspace`` passed to ``subplots_adjust``.
+    title_spacing : float
+        Figure top margin is ``1 - title_spacing / figsize[1]``.
+    subtitle_spacing : float
+        Padding of each panel title.
+    tick_font_size : int
+        Font size of axis ticks.
+    """
     # Create the output folder if it doesn't exist
 
     output_path = os.path.join(os.environ.get('HOME'), 'Code', 'juan-garassino', 'mySandbox', 'nanoGPT', 'plots', output_folder)

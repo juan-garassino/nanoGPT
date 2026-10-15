@@ -1,3 +1,4 @@
+"""Setuptools packaging for nanoGPT (installs the ``nanoGPT-run`` script)."""
 from setuptools import find_packages
 from setuptools import setup
 

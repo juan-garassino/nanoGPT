@@ -1,8 +1,33 @@
+"""Model construction: from scratch, from a ``ckpt.pt`` checkpoint, or from GPT-2 weights."""
+
+
 from nanoGPT.model.model import GPT, GPTConfig
 import torch
 import os
 
 def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=None):
+    """Create a :class:`~nanoGPT.model.model.GPT` from scratch, a checkpoint, or GPT-2 weights.
+
+    Parameters
+    ----------
+    init_from : str
+        ``"scratch"``, ``"resume"``, or a name starting with ``"gpt2"``.
+    out_dir : str
+        Directory holding ``ckpt.pt`` (used for ``"resume"``).
+    device : str
+        ``map_location`` used when loading the checkpoint.
+    model_args : dict
+        Keyword arguments for ``GPTConfig``; updated in place.
+    meta_vocab_size : int, optional
+        Vocabulary size for ``"scratch"``; defaults to 50304 when None.
+
+    Returns
+    -------
+    tuple
+        ``(model, model_args)`` for ``"scratch"`` and ``"gpt2*"``;
+        ``(model, model_args, iter_num, best_val_loss)`` for ``"resume"``.
+        Returns None for any other ``init_from`` value.
+    """
     if init_from == "scratch":
         # Initialize a new model from scratch
         print("Initializing a new model from scratch")

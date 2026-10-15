@@ -41,8 +41,6 @@ def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle
     tick_font_size : int
         Font size of axis ticks.
     """
-    # Create the output folder if it doesn't exist
-
     output_path = os.path.join(os.environ.get('HOME'), 'Code', 'juan-garassino', 'mySandbox', 'nanoGPT', 'plots', output_folder)
 
     os.makedirs(output_path, exist_ok=True)
@@ -69,31 +67,25 @@ def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle
 
     # Iterate over the linear layers and plot the heatmaps
     for i, layer_key in enumerate(linear_layer_keys):
-        # Extract the weights from the layer
         weights = data[layer_key]
 
-        # Move the weights to CPU memory
         weights = weights.cpu()
 
-        # Reshape the weights to 2D
+        # flatten all but the first dimension so 1-D tensors become (n, 1)
         weights_2d = weights.view(weights.size(0), -1)
 
-        # Convert the weights to a numpy array
         weights_np = weights_2d.detach().numpy()
 
-        # Determine the layer and head indices
+        # fill the grid column by column
         layer_idx = i % num_layers
         head_idx = i // num_layers
 
-        # Plot the heatmap in the corresponding subplot
         axes[layer_idx, head_idx].imshow(weights_np, cmap='hot')
         axes[layer_idx, head_idx].set_title(f"Layer: {layer_idx}\nHead: {head_idx+1}", fontsize=subtitle_font_size,
                                             pad=subtitle_spacing)
 
-        # Set the font size of the ticks
         axes[layer_idx, head_idx].tick_params(axis='both', which='both', labelsize=tick_font_size)
 
-    # Adjust the layout and spacing
     fig.tight_layout()
 
     # Save the plot with timestamp in the output folder

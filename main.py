@@ -47,13 +47,13 @@ def parse_args():
     # Data
     parser.add_argument("--dataset", type=str, default="shakespeare_char", help="Dataset name")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=5 * 8, help="Number of gradient accumulation steps")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size") # 12
-    parser.add_argument("--block_size", type=int, default=8, help="Block size") # 1024
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
+    parser.add_argument("--block_size", type=int, default=8, help="Block size")
 
     # Model
-    parser.add_argument("--n_layer", type=int, default=2, help="Number of layers") # 12
-    parser.add_argument("--n_head", type=int, default=2, help="Number of attention heads") # 12
-    parser.add_argument("--n_embd", type=int, default=16, help="Embedding dimension") # 768
+    parser.add_argument("--n_layer", type=int, default=2, help="Number of layers")
+    parser.add_argument("--n_head", type=int, default=2, help="Number of attention heads")
+    parser.add_argument("--n_embd", type=int, default=16, help="Embedding dimension")
     parser.add_argument("--dropout", type=float, default=0.0, help="Dropout rate")
     parser.add_argument("--bias", action="store_true", help="Use bias inside LayerNorm and Linear layers")
 
@@ -75,11 +75,10 @@ def parse_args():
     parser.add_argument("--backend", type=str, default="nccl", help="DDP backend")
 
     # System
-    parser.add_argument("--device", type=str, default="cpu", help="Device") # CUDA
+    parser.add_argument("--device", type=str, default="cpu", help="Device")
 
     parser.add_argument("--dtype", type=str, default="float16", help="Data type")
-    #parser.add_argument("--dtype", type=str, default="bfloat16" if torch.cuda.is_bf16_supported() else "float16", help="Data type")
-    parser.add_argument("--compile", action="store_false", help="Compile the model using PyTorch 2.0") # TRUE
+    parser.add_argument("--compile", action="store_false", help="Compile the model using PyTorch 2.0")
 
     return parser.parse_args()
 
@@ -93,7 +92,7 @@ config_keys = [
     if not k.startswith("_") and isinstance(v, (int, float, bool, str))
 ]
 
-exec(open(f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/configurator/configurator.py").read())  # overrides from command line or config file
+exec(open(f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/configurator/configurator.py").read())  # NOTE: also re-parses sys.argv and rejects the options argparse accepted (see README)
 
 config = {k: globals()[k] for k in config_keys}  # will be useful for logging
 
@@ -114,7 +113,7 @@ if ddp:
     args.gradient_accumulation_steps //= ddp_world_size
 
 else:
-    # if not ddp, we are running on a single gpu, and one process
+    # not ddp: a single process
     master_process = True
     seed_offset = 0
     ddp_world_size = 1
@@ -292,11 +291,8 @@ while True:
 
     local_iter_num += 1
 
-    # Access the weights from the model
-
     weights = model.state_dict()
 
-    # Plot the heatmaps
     plot_heatmaps(weights, "output_folder")
 
     # termination conditions

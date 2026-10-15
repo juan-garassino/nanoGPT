@@ -31,13 +31,13 @@ def character_tokenizer(data):
 
     def encode(s):
         """Map a string to a list of character ids."""
-        return [stoi[c] for c in s]  # Encoder: take a string, output a list of integers
+        return [stoi[c] for c in s]
 
     def decode(l):
         """Map a list of character ids back to a string."""
-        return "".join([itos[i] for i in l])  # Decoder: take a list of integers, output a string
+        return "".join([itos[i] for i in l])
 
-    # Create the train and test splits
+    # 90/10 train/validation split
     n = len(data)
     train_data = data[: int(n * 0.9)]
     val_data = data[int(n * 0.9) :]

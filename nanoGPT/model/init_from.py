@@ -29,7 +29,6 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
         Returns None for any other ``init_from`` value.
     """
     if init_from == "scratch":
-        # Initialize a new model from scratch
         print("Initializing a new model from scratch")
         # Determine the vocab size we'll use for from-scratch training
         if meta_vocab_size is None:
@@ -41,7 +40,6 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
 
     elif init_from == "resume":
         print(f"Resuming training from {out_dir}")
-        # Resume training from a checkpoint
         ckpt_path = os.path.join(out_dir, "ckpt.pt")
         checkpoint = torch.load(ckpt_path, map_location=device)
         checkpoint_model_args = checkpoint["model_args"]
@@ -65,7 +63,6 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
 
     elif init_from.startswith("gpt2"):
         print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
-        # Initialize from OpenAI GPT-2 weights
         override_args = dict(dropout=model_args["dropout"])
         model = GPT.from_pretrained(init_from, override_args)
         # Read off the created config params, so we can store them into checkpoint correctly

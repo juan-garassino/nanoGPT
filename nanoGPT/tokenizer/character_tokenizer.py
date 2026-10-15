@@ -1,10 +1,24 @@
+"""Character-level tokenisation of a text corpus into ``train.bin`` / ``val.bin`` / ``meta.pkl``."""
+
 import os
 import numpy as np
 import pickle
 
 from nanoGPT.sourcing.sourcing import sourcing_data
 
-def character_tokenizer(data):
+
+def character_tokenizer(data: str) -> None:
+    """Encode text at character level and write the splits next to this module.
+
+    The first 90% of ``data`` is the train split, the rest validation. Writes
+    ``train.bin`` and ``val.bin`` (``uint16`` ids) and ``meta.pkl`` (a dict with
+    ``vocab_size``, ``itos`` and ``stoi``) into the directory of this file.
+
+    Parameters
+    ----------
+    data : str
+        Raw text.
+    """
     # Get all the unique characters that occur in the text
     chars = sorted(list(set(data)))
     vocab_size = len(chars)
@@ -16,12 +30,14 @@ def character_tokenizer(data):
     itos = {i: ch for i, ch in enumerate(chars)}
 
     def encode(s):
-        return [stoi[c] for c in s]  # Encoder: take a string, output a list of integers
+        """Map a string to a list of character ids."""
+        return [stoi[c] for c in s]
 
     def decode(l):
-        return "".join([itos[i] for i in l])  # Decoder: take a list of integers, output a string
+        """Map a list of character ids back to a string."""
+        return "".join([itos[i] for i in l])
 
-    # Create the train and test splits
+    # 90/10 train/validation split
     n = len(data)
     train_data = data[: int(n * 0.9)]
     val_data = data[int(n * 0.9) :]
@@ -46,6 +62,7 @@ def character_tokenizer(data):
     }
     with open(os.path.join(os.path.dirname(__file__), "meta.pkl"), "wb") as f:
         pickle.dump(meta, f)
+
 
 if __name__ == "__main__":
     # Sourcing the data

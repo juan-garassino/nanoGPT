@@ -1,73 +1,142 @@
+"""Training entry point: builds a GPT from scratch or a checkpoint, trains it with AdamW,
+periodically evaluates and checkpoints, and saves weight heatmaps after each iteration.
+
+Run without command-line options (see README, "Known limitations"):
+$ python main.py
+"""
+
 import argparse
 import torch
 import os
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 import time
 from contextlib import nullcontext
 import numpy as np
 
-from nanoGPT.sourcing.sourcing import sourcing_data, get_batch
-from nanoGPT.model.model import GPT, GPTConfig
+from nanoGPT.sourcing.sourcing import get_batch
 from nanoGPT.model.init_from import initialize_model
 from nanoGPT.model.tools import get_lr, estimate_loss
 from nanoGPT.heatmaps.heatmaps import plot_heatmaps
 
-def parse_args():
+
+def parse_args() -> argparse.Namespace:
+    """Build the command-line parser for the training options and parse ``sys.argv``.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed options (see ``python main.py --help``).
+    """
     parser = argparse.ArgumentParser(description="GPT2 Training Configuration")
 
     # I/O
     parser.add_argument("--out_dir", type=str, default="out", help="Output directory")
-    parser.add_argument("--eval_interval", type=int, default=2000, help="Evaluation interval")
+    parser.add_argument(
+        "--eval_interval", type=int, default=2000, help="Evaluation interval"
+    )
     parser.add_argument("--log_interval", type=int, default=1, help="Logging interval")
-    parser.add_argument("--eval_iters", type=int, default=200, help="Number of evaluation iterations")
-    parser.add_argument("--eval_only", action="store_true", help="If True, script exits after the first evaluation")
-    parser.add_argument("--always_save_checkpoint", action="store_true", help="If True, always save a checkpoint after each evaluation")
-    parser.add_argument("--init_from", type=str, default="scratch", help="'scratch', 'resume', or 'gpt2*'")
+    parser.add_argument(
+        "--eval_iters", type=int, default=200, help="Number of evaluation iterations"
+    )
+    parser.add_argument(
+        "--eval_only",
+        action="store_true",
+        help="If True, script exits after the first evaluation",
+    )
+    parser.add_argument(
+        "--always_save_checkpoint",
+        action="store_true",
+        help="If True, always save a checkpoint after each evaluation",
+    )
+    parser.add_argument(
+        "--init_from",
+        type=str,
+        default="scratch",
+        help="'scratch', 'resume', or 'gpt2*'",
+    )
 
     # Wandb logging
     parser.add_argument("--wandb_log", action="store_true", help="Enable Wandb logging")
-    parser.add_argument("--wandb_project", type=str, default="owt", help="Wandb project name")
-    parser.add_argument("--wandb_run_name", type=str, default="gpt2", help="Wandb run name")
+    parser.add_argument(
+        "--wandb_project", type=str, default="owt", help="Wandb project name"
+    )
+    parser.add_argument(
+        "--wandb_run_name", type=str, default="gpt2", help="Wandb run name"
+    )
 
     # Data
-    parser.add_argument("--dataset", type=str, default="shakespeare_char", help="Dataset name")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=5 * 8, help="Number of gradient accumulation steps")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size") # 12
-    parser.add_argument("--block_size", type=int, default=8, help="Block size") # 1024
+    parser.add_argument(
+        "--dataset", type=str, default="shakespeare_char", help="Dataset name"
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=5 * 8,
+        help="Number of gradient accumulation steps",
+    )
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
+    parser.add_argument("--block_size", type=int, default=8, help="Block size")
 
     # Model
-    parser.add_argument("--n_layer", type=int, default=2, help="Number of layers") # 12
-    parser.add_argument("--n_head", type=int, default=2, help="Number of attention heads") # 12
-    parser.add_argument("--n_embd", type=int, default=16, help="Embedding dimension") # 768
+    parser.add_argument("--n_layer", type=int, default=2, help="Number of layers")
+    parser.add_argument(
+        "--n_head", type=int, default=2, help="Number of attention heads"
+    )
+    parser.add_argument("--n_embd", type=int, default=16, help="Embedding dimension")
     parser.add_argument("--dropout", type=float, default=0.0, help="Dropout rate")
-    parser.add_argument("--bias", action="store_true", help="Use bias inside LayerNorm and Linear layers")
+    parser.add_argument(
+        "--bias",
+        action="store_true",
+        help="Use bias inside LayerNorm and Linear layers",
+    )
 
     # AdamW optimizer
-    parser.add_argument("--learning_rate", type=float, default=6e-4, help="Learning rate")
-    parser.add_argument("--max_iters", type=int, default=3000, help="Total number of training iterations")
+    parser.add_argument(
+        "--learning_rate", type=float, default=6e-4, help="Learning rate"
+    )
+    parser.add_argument(
+        "--max_iters",
+        type=int,
+        default=3000,
+        help="Total number of training iterations",
+    )
     parser.add_argument("--weight_decay", type=float, default=1e-1, help="Weight decay")
     parser.add_argument("--beta1", type=float, default=0.9, help="AdamW beta1")
     parser.add_argument("--beta2", type=float, default=0.95, help="AdamW beta2")
-    parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clip value")
+    parser.add_argument(
+        "--grad_clip", type=float, default=1.0, help="Gradient clip value"
+    )
 
     # Learning rate decay settings
-    parser.add_argument("--decay_lr", action="store_true", help="Whether to decay the learning rate")
-    parser.add_argument("--warmup_iters", type=int, default=2000, help="Number of warmup steps")
-    parser.add_argument("--lr_decay_iters", type=int, default=600000, help="Learning rate decay iterations")
-    parser.add_argument("--min_lr", type=float, default=6e-5, help="Minimum learning rate")
+    parser.add_argument(
+        "--decay_lr", action="store_true", help="Whether to decay the learning rate"
+    )
+    parser.add_argument(
+        "--warmup_iters", type=int, default=2000, help="Number of warmup steps"
+    )
+    parser.add_argument(
+        "--lr_decay_iters",
+        type=int,
+        default=600000,
+        help="Learning rate decay iterations",
+    )
+    parser.add_argument(
+        "--min_lr", type=float, default=6e-5, help="Minimum learning rate"
+    )
 
     # DDP settings
     parser.add_argument("--backend", type=str, default="nccl", help="DDP backend")
 
     # System
-    parser.add_argument("--device", type=str, default="cpu", help="Device") # CUDA
+    parser.add_argument("--device", type=str, default="cpu", help="Device")
 
     parser.add_argument("--dtype", type=str, default="float16", help="Data type")
-    #parser.add_argument("--dtype", type=str, default="bfloat16" if torch.cuda.is_bf16_supported() else "float16", help="Data type")
-    parser.add_argument("--compile", action="store_false", help="Compile the model using PyTorch 2.0") # TRUE
+    parser.add_argument(
+        "--compile", action="store_false", help="Compile the model using PyTorch 2.0"
+    )
 
     return parser.parse_args()
+
 
 args = parse_args()
 
@@ -79,7 +148,11 @@ config_keys = [
     if not k.startswith("_") and isinstance(v, (int, float, bool, str))
 ]
 
-exec(open(f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/configurator/configurator.py").read())  # overrides from command line or config file
+exec(
+    open(
+        f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/configurator/configurator.py"
+    ).read()
+)  # NOTE: also re-parses sys.argv and rejects the options argparse accepted (see README)
 
 config = {k: globals()[k] for k in config_keys}  # will be useful for logging
 
@@ -100,12 +173,17 @@ if ddp:
     args.gradient_accumulation_steps //= ddp_world_size
 
 else:
-    # if not ddp, we are running on a single gpu, and one process
+    # not ddp: a single process
     master_process = True
     seed_offset = 0
     ddp_world_size = 1
 
-tokens_per_iter = args.gradient_accumulation_steps * ddp_world_size * args.batch_size * args.block_size
+tokens_per_iter = (
+    args.gradient_accumulation_steps
+    * ddp_world_size
+    * args.batch_size
+    * args.block_size
+)
 
 print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
@@ -113,7 +191,9 @@ iter_num = 0
 
 best_val_loss = 1e9
 
-device_type = "cuda" if "cuda" in args.device else "cpu"  # for later use in torch.autocast
+device_type = (
+    "cuda" if "cuda" in args.device else "cpu"
+)  # for later use in torch.autocast
 
 ptdtype = {
     "float32": torch.float32,
@@ -127,7 +207,7 @@ ctx = (
     else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 )
 
-print('model_args')
+print("model_args")
 
 # model init
 model_args = dict(
@@ -140,17 +220,23 @@ model_args = dict(
     dropout=args.dropout,
 )  # start with model_args from command line
 
-if args.init_from == 'scratch':
-    model, model_args = initialize_model(args.init_from, args.out_dir, args.device, model_args)
+if args.init_from == "scratch":
+    model, model_args = initialize_model(
+        args.init_from, args.out_dir, args.device, model_args
+    )
 
-if args.init_from == 'resume':
-    model, model_args, best_val_loss, iter_num = initialize_model(args.init_from, args.out_dir, args.device, model_args)
+if args.init_from == "resume":
+    model, model_args, best_val_loss, iter_num = initialize_model(
+        args.init_from, args.out_dir, args.device, model_args
+    )
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == "float16"))
 
 # optimizer
-optimizer = model.configure_optimizers(args.weight_decay, args.learning_rate, (args.beta1, args.beta2), device_type)
+optimizer = model.configure_optimizers(
+    args.weight_decay, args.learning_rate, (args.beta1, args.beta2), device_type
+)
 
 local_iter_num = 0  # number of iterations in the lifetime of this process
 
@@ -162,13 +248,24 @@ if args.wandb_log and master_process:
 
     wandb.init(project=args.wandb_project, name=args.wandb_run_name, config=config)
 
-data_dir = os.path.join(f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/data", args.dataset)
+data_dir = os.path.join(
+    f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/data",
+    args.dataset,
+)
 
 train_data = np.memmap(os.path.join(data_dir, "train.bin"), dtype=np.uint16, mode="r")
 
 val_data = np.memmap(os.path.join(data_dir, "val.bin"), dtype=np.uint16, mode="r")
 
-X, Y = get_batch(train_data, val_data, 'train', args.batch_size, args.block_size, device_type, args.device)
+X, Y = get_batch(
+    train_data,
+    val_data,
+    "train",
+    args.batch_size,
+    args.block_size,
+    device_type,
+    args.device,
+)
 
 running_mfu = -1.0
 
@@ -176,7 +273,7 @@ t0 = time.time()
 
 #### TRAINING LOOP
 
-print('loop')
+print("loop")
 
 while True:
     # determine and set the learning rate for this iteration
@@ -187,7 +284,17 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % args.eval_interval == 0 and master_process:
-        losses = estimate_loss(model, train_data, val_data, args.eval_iters, args.batch_size, args.block_size, device_type, args.device, ctx)
+        losses = estimate_loss(
+            model,
+            train_data,
+            val_data,
+            args.eval_iters,
+            args.batch_size,
+            args.block_size,
+            device_type,
+            args.device,
+            ctx,
+        )
 
         print(
             f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
@@ -241,7 +348,15 @@ while True:
             )  # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
 
-        X, Y = get_batch(train_data, val_data, 'train', args.batch_size, args.block_size, device_type, args.device)
+        X, Y = get_batch(
+            train_data,
+            val_data,
+            "train",
+            args.batch_size,
+            args.block_size,
+            device_type,
+            args.device,
+        )
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
 
@@ -267,7 +382,9 @@ while True:
         # scale up to undo the division above, approximating the true total loss (exact would have been a sum)
         lossf = loss.item() * args.gradient_accumulation_steps
         if local_iter_num >= 5:  # let the training loop settle a bit
-            mfu = raw_model.estimate_mfu(args.batch_size * args.gradient_accumulation_steps, dt)
+            mfu = raw_model.estimate_mfu(
+                args.batch_size * args.gradient_accumulation_steps, dt
+            )
             running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
 
         print(
@@ -278,11 +395,8 @@ while True:
 
     local_iter_num += 1
 
-    # Access the weights from the model
-
     weights = model.state_dict()
 
-    # Plot the heatmaps
     plot_heatmaps(weights, "output_folder")
 
     # termination conditions

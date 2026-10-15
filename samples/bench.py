@@ -1,6 +1,7 @@
 """
 A much shorter version of train.py for benchmarking
 """
+
 import os
 from contextlib import nullcontext
 import numpy as np
@@ -48,6 +49,7 @@ if real_data:
     )
 
     def get_batch(split):
+        """Return an int64 ``(x, y)`` batch of shape ``(batch_size, block_size)`` from the train data."""
         data = train_data  # note ignore split in benchmarking script
         ix = torch.randint(len(data) - block_size, (batch_size,))
         x = torch.stack(

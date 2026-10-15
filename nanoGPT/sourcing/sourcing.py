@@ -1,9 +1,28 @@
-import torch
-import numpy as np
-import os
-import requests
+"""Text loading and random batch sampling from tokenised ``.bin`` files."""
 
-def sourcing_data(txt_folder=None):
+import os
+from typing import Optional, Tuple
+
+import numpy as np
+import requests
+import torch
+
+
+def sourcing_data(txt_folder: Optional[str] = None) -> str:
+    """Load raw text.
+
+    Parameters
+    ----------
+    txt_folder : str, optional
+        Folder whose ``*.txt`` files are concatenated. If None, the tiny
+        Shakespeare file is downloaded to ``input.txt`` next to this module
+        (once) and read.
+
+    Returns
+    -------
+    str
+        The text.
+    """
     if txt_folder is None:
         # Download the tiny shakespeare dataset
         input_file_path = os.path.join(os.path.dirname(__file__), "input.txt")
@@ -26,7 +45,36 @@ def sourcing_data(txt_folder=None):
     return data
 
 
-def get_batch(train_data, val_data, split, batch_size, block_size, device_type, device):
+def get_batch(
+    train_data: np.ndarray,
+    val_data: np.ndarray,
+    split: str,
+    batch_size: int,
+    block_size: int,
+    device_type: str,
+    device: str,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Sample a random batch of next-token-prediction pairs.
+
+    Parameters
+    ----------
+    train_data, val_data : numpy.ndarray
+        1-D ``uint16`` token arrays (typically ``np.memmap``).
+    split : str
+        ``"train"`` selects ``train_data``; anything else selects ``val_data``.
+    batch_size, block_size : int
+        Number of sequences and tokens per sequence.
+    device_type : str
+        ``"cuda"`` pins memory and copies asynchronously.
+    device : str
+        Target device.
+
+    Returns
+    -------
+    x, y : torch.Tensor
+        ``torch.int64`` tensors of shape ``(batch_size, block_size)``; ``y`` is
+        ``x`` shifted left by one token.
+    """
     data = train_data if split == "train" else val_data
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack(

@@ -10,6 +10,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 import math
 import inspect
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -17,19 +18,51 @@ from torch.nn import functional as F
 
 
 class LayerNorm(nn.Module):
-    """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False"""
+    """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False
 
-    def __init__(self, ndim, bias):
+    Parameters
+    ----------
+    ndim : int
+        Size of the normalised (last) dimension.
+    bias : bool
+        If True, learn an additive bias of shape ``(ndim,)``; otherwise none.
+    """
+
+    def __init__(self, ndim: int, bias: bool):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(ndim))
         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Normalise over the last dimension.
+
+        Parameters
+        ----------
+        input : torch.Tensor
+            Float tensor of shape ``(..., ndim)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Tensor with the same shape and dtype as ``input``.
+        """
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, config):
+    """Multi-head self-attention with a causal mask.
+
+    Uses ``scaled_dot_product_attention`` when available (PyTorch >= 2.0),
+    otherwise a manual masked-softmax implementation.
+
+    Parameters
+    ----------
+    config : GPTConfig
+        Uses ``n_embd`` (must be divisible by ``n_head``), ``n_head``,
+        ``bias``, ``dropout`` and ``block_size``.
+    """
+
+    def __init__(self, config: "GPTConfig"):
         super().__init__()
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
@@ -56,7 +89,20 @@ class CausalSelfAttention(nn.Module):
                 ),
             )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply causal self-attention.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Float tensor of shape ``(B, T, C)`` with ``C == n_embd`` and
+            ``T <= block_size``.
+
+        Returns
+        -------
+        torch.Tensor
+            Float tensor of shape ``(B, T, C)``.
+        """
         (
             B,
             T,
@@ -103,14 +149,34 @@ class CausalSelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, config):
+    """Position-wise feed-forward network: Linear(4C) -> GELU -> Linear(C) -> Dropout.
+
+    Parameters
+    ----------
+    config : GPTConfig
+        Uses ``n_embd``, ``bias`` and ``dropout``.
+    """
+
+    def __init__(self, config: "GPTConfig"):
         super().__init__()
         self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         self.gelu = nn.GELU()
         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the feed-forward network.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Float tensor of shape ``(B, T, n_embd)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Float tensor of shape ``(B, T, n_embd)``.
+        """
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)
@@ -119,14 +185,34 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, config):
+    """Pre-norm Transformer block: ``x + attn(ln(x))`` then ``x + mlp(ln(x))``.
+
+    Parameters
+    ----------
+    config : GPTConfig
+        Model hyper-parameters, passed on to the sub-modules.
+    """
+
+    def __init__(self, config: "GPTConfig"):
         super().__init__()
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the block.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Float tensor of shape ``(B, T, n_embd)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Float tensor of shape ``(B, T, n_embd)``.
+        """
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
@@ -134,17 +220,49 @@ class Block(nn.Module):
 
 @dataclass
 class GPTConfig:
+    """Hyper-parameters of a :class:`GPT` model (defaults match GPT-2 124M).
+
+    Attributes
+    ----------
+    block_size : int
+        Maximum context length in tokens.
+    vocab_size : int
+        Number of token ids.
+    n_layer : int
+        Number of Transformer blocks.
+    n_head : int
+        Number of attention heads per block.
+    n_embd : int
+        Embedding (channel) dimension.
+    dropout : float
+        Dropout probability.
+    bias : bool
+        Whether Linear and LayerNorm layers have a bias.
+    """
+
     block_size: int = 1024
-    vocab_size: int = 50304  # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
+    vocab_size: int = (
+        50304  # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
+    )
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
     dropout: float = 0.0
-    bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    bias: bool = (
+        True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    )
 
 
 class GPT(nn.Module):
-    def __init__(self, config):
+    """GPT language model: token + position embeddings, Transformer blocks, tied LM head.
+
+    Parameters
+    ----------
+    config : GPTConfig
+        Model hyper-parameters; ``vocab_size`` and ``block_size`` must be set.
+    """
+
+    def __init__(self, config: "GPTConfig"):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
@@ -180,12 +298,21 @@ class GPT(nn.Module):
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params() / 1e6,))
 
-    def get_num_params(self, non_embedding=True):
+    def get_num_params(self, non_embedding: bool = True) -> int:
         """
         Return the number of parameters in the model.
         For non-embedding count (default), the position embeddings get subtracted.
         The token embeddings would too, except due to the parameter sharing these
         params are actually used as weights in the final layer, so we include them.
+
+        Parameters
+        ----------
+        non_embedding : bool, default True
+            Subtract the position-embedding parameters from the count.
+
+        Returns
+        -------
+        int
         """
         n_params = sum(p.numel() for p in self.parameters())
         if non_embedding:
@@ -193,6 +320,7 @@ class GPT(nn.Module):
         return n_params
 
     def _init_weights(self, module):
+        """Initialise Linear and Embedding weights from N(0, 0.02); zero Linear biases."""
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
@@ -200,7 +328,26 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None):
+    def forward(
+        self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Compute logits and, if ``targets`` is given, the cross-entropy loss.
+
+        Parameters
+        ----------
+        idx : torch.Tensor
+            Token ids, ``torch.long``, shape ``(B, T)`` with ``T <= block_size``.
+        targets : torch.Tensor, optional
+            Target token ids, ``torch.long``, shape ``(B, T)``; ``-1`` is ignored.
+
+        Returns
+        -------
+        logits : torch.Tensor
+            Shape ``(B, T, vocab_size)`` when ``targets`` is given, otherwise
+            ``(B, 1, vocab_size)`` (last position only).
+        loss : torch.Tensor or None
+            Scalar loss, or None when ``targets`` is None.
+        """
         device = idx.device
         b, t = idx.size()
         assert (
@@ -231,7 +378,14 @@ class GPT(nn.Module):
 
         return logits, loss
 
-    def crop_block_size(self, block_size):
+    def crop_block_size(self, block_size: int) -> None:
+        """Reduce the context length in place.
+
+        Parameters
+        ----------
+        block_size : int
+            New block size; must not exceed the current ``config.block_size``.
+        """
         # model surgery to decrease the block size if necessary
         # e.g. we may load the GPT2 pretrained model checkpoint (block size 1024)
         # but want to use a smaller block size for some smaller, simpler model
@@ -245,7 +399,24 @@ class GPT(nn.Module):
                 block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]
 
     @classmethod
-    def from_pretrained(cls, model_type, override_args=None):
+    def from_pretrained(
+        cls, model_type: str, override_args: Optional[dict] = None
+    ) -> "GPT":
+        """Build a :class:`GPT` and load OpenAI GPT-2 weights via ``transformers``.
+
+        Parameters
+        ----------
+        model_type : {"gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"}
+            Checkpoint to load. ``vocab_size=50257``, ``block_size=1024`` and
+            ``bias=True`` are forced.
+        override_args : dict, optional
+            May only contain ``"dropout"`` (float).
+
+        Returns
+        -------
+        GPT
+            Model with the pretrained weights copied in.
+        """
         assert model_type in {"gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"}
         override_args = override_args or {}  # default to empty dict
         # only dropout can be overridden see more notes below
@@ -315,7 +486,30 @@ class GPT(nn.Module):
 
         return model
 
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+    def configure_optimizers(
+        self,
+        weight_decay: float,
+        learning_rate: float,
+        betas: Tuple[float, float],
+        device_type: str,
+    ) -> torch.optim.AdamW:
+        """Create an AdamW optimiser; tensors with ``dim >= 2`` get weight decay.
+
+        Parameters
+        ----------
+        weight_decay : float
+            Decay applied to matmul and embedding weights.
+        learning_rate : float
+            Initial learning rate.
+        betas : tuple of float
+            AdamW ``(beta1, beta2)``.
+        device_type : str
+            ``"cuda"`` enables the fused AdamW kernel when available.
+
+        Returns
+        -------
+        torch.optim.AdamW
+        """
         # start with all of the candidate parameters
         param_dict = {pn: p for pn, p in self.named_parameters()}
         # filter out those that do not require grad
@@ -347,8 +541,21 @@ class GPT(nn.Module):
 
         return optimizer
 
-    def estimate_mfu(self, fwdbwd_per_iter, dt):
-        """estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS"""
+    def estimate_mfu(self, fwdbwd_per_iter: int, dt: float) -> float:
+        """Estimate model flops utilisation (MFU) as a fraction of A100 bfloat16 peak FLOPS.
+
+        Parameters
+        ----------
+        fwdbwd_per_iter : int
+            Number of forward/backward passes (sequences) per iteration.
+        dt : float
+            Wall-clock seconds for the iteration.
+
+        Returns
+        -------
+        float
+            Achieved FLOPS divided by 312e12.
+        """
         # first estimate the number of flops we do per iteration.
         # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
         N = self.get_num_params()
@@ -364,11 +571,33 @@ class GPT(nn.Module):
         return mfu
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    def generate(
+        self,
+        idx: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+    ) -> torch.Tensor:
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
+
+        Parameters
+        ----------
+        idx : torch.Tensor
+            Conditioning token ids, ``torch.long``, shape ``(B, T)``.
+        max_new_tokens : int
+            Number of tokens to append.
+        temperature : float, default 1.0
+            Divides the logits before softmax.
+        top_k : int, optional
+            If given, sample only from the ``top_k`` most likely tokens.
+
+        Returns
+        -------
+        torch.Tensor
+            ``torch.long`` tensor of shape ``(B, T + max_new_tokens)``.
         """
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size

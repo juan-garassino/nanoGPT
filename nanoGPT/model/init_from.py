@@ -1,22 +1,57 @@
-from nanoGPT.model.model import GPT, GPTConfig
-import torch
-import os
+"""Model construction: from scratch, from a ``ckpt.pt`` checkpoint, or from GPT-2 weights."""
 
-def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=None):
+from nanoGPT.model.model import GPT, GPTConfig
+import os
+from typing import Optional
+
+import torch
+
+
+def initialize_model(
+    init_from: str,
+    out_dir: str,
+    device: str,
+    model_args: dict,
+    meta_vocab_size: Optional[int] = None,
+) -> tuple:
+    """Create a :class:`~nanoGPT.model.model.GPT` from scratch, a checkpoint, or GPT-2 weights.
+
+    Parameters
+    ----------
+    init_from : str
+        ``"scratch"``, ``"resume"``, or a name starting with ``"gpt2"``.
+    out_dir : str
+        Directory holding ``ckpt.pt`` (used for ``"resume"``).
+    device : str
+        ``map_location`` used when loading the checkpoint.
+    model_args : dict
+        Keyword arguments for ``GPTConfig``; updated in place.
+    meta_vocab_size : int, optional
+        Vocabulary size for ``"scratch"``; defaults to 50304 when None.
+
+    Returns
+    -------
+    tuple
+        ``(model, model_args)`` for ``"scratch"`` and ``"gpt2*"``;
+        ``(model, model_args, iter_num, best_val_loss)`` for ``"resume"``.
+        Returns None for any other ``init_from`` value.
+    """
     if init_from == "scratch":
-        # Initialize a new model from scratch
         print("Initializing a new model from scratch")
         # Determine the vocab size we'll use for from-scratch training
         if meta_vocab_size is None:
-            print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
-        model_args["vocab_size"] = meta_vocab_size if meta_vocab_size is not None else 50304
+            print(
+                "defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)"
+            )
+        model_args["vocab_size"] = (
+            meta_vocab_size if meta_vocab_size is not None else 50304
+        )
         gptconf = GPTConfig(**model_args)
         model = GPT(gptconf)
         return model, model_args
 
     elif init_from == "resume":
         print(f"Resuming training from {out_dir}")
-        # Resume training from a checkpoint
         ckpt_path = os.path.join(out_dir, "ckpt.pt")
         checkpoint = torch.load(ckpt_path, map_location=device)
         checkpoint_model_args = checkpoint["model_args"]
@@ -32,7 +67,7 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
         unwanted_prefix = "_orig_mod."
         for k, v in list(state_dict.items()):
             if k.startswith(unwanted_prefix):
-                state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+                state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
         model.load_state_dict(state_dict)
         iter_num = checkpoint["iter_num"]
         best_val_loss = checkpoint["best_val_loss"]
@@ -40,7 +75,6 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
 
     elif init_from.startswith("gpt2"):
         print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
-        # Initialize from OpenAI GPT-2 weights
         override_args = dict(dropout=model_args["dropout"])
         model = GPT.from_pretrained(init_from, override_args)
         # Read off the created config params, so we can store them into checkpoint correctly

@@ -149,6 +149,7 @@ val_data = np.memmap(os.path.join(data_dir, "val.bin"), dtype=np.uint16, mode="r
 
 
 def get_batch(split):
+    """Return ``(x, y)`` int64 tensors of shape ``(batch_size, block_size)`` for ``split`` ("train" or "val")."""
     data = train_data if split == "train" else val_data
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack(
@@ -245,9 +246,9 @@ elif init_from.startswith("gpt2"):
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
-    model_args[
-        "block_size"
-    ] = block_size  # so that the checkpoint will have the right value
+    model_args["block_size"] = (
+        block_size  # so that the checkpoint will have the right value
+    )
 
 model.to(device)
 
@@ -274,9 +275,11 @@ if compile:
 if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
 
+
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss():
+    """Return ``{"train": loss, "val": loss}`` averaged over ``eval_iters`` batches (scalar tensors)."""
     out = {}
     model.eval()
     for split in ["train", "val"]:
@@ -290,8 +293,10 @@ def estimate_loss():
     model.train()
     return out
 
+
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
+    """Return the learning rate (float) at iteration ``it`` from the global schedule settings."""
     # 1) linear warmup for warmup_iters steps
     if it < warmup_iters:
         return learning_rate * it / warmup_iters
@@ -303,6 +308,7 @@ def get_lr(it):
     assert 0 <= decay_ratio <= 1
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # coeff ranges 0..1
     return min_lr + coeff * (learning_rate - min_lr)
+
 
 # logging
 if wandb_log and master_process:

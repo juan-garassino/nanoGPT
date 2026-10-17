@@ -19,7 +19,6 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123
 import os
 import time
 import math
-import pickle
 from contextlib import nullcontext
 
 import numpy as np
@@ -28,6 +27,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from nanoGPT.model.model import GPTConfig, GPT
+from nanoGPT.model.init_from import load_meta
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -83,7 +83,7 @@ config_keys = [
     for k, v in globals().items()
     if not k.startswith("_") and isinstance(v, (int, float, bool, str))
 ]
-exec(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "configurator", "configurator.py")).read())  # overrides from command line or config file
+exec(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "configurator", "configurator.py")).read())  # nosec B102 - repo-local configurator (G-009)
 
 config = {k: globals()[k] for k in config_keys}  # will be useful for logging
 # -----------------------------------------------------------------------------
@@ -181,8 +181,7 @@ meta_path = os.path.join(data_dir, "meta.pkl")
 meta_vocab_size = None
 
 if os.path.exists(meta_path):
-    with open(meta_path, "rb") as f:
-        meta = pickle.load(f)
+    meta = load_meta(meta_path)
     meta_vocab_size = meta["vocab_size"]
     print(f"found vocab_size = {meta_vocab_size} (inside {meta_path})")
 

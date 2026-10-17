@@ -1,6 +1,6 @@
 from nanoGPT.model.model import GPT, GPTConfig
 import os
-import pickle  # nosec B403 - only reads the meta.pkl written by our own prepare scripts
+import pickle  # nosec B403 - only used through _PlainDataUnpickler below
 
 import torch
 
@@ -58,15 +58,27 @@ def restore_optimizer(optimizer, out_dir, device):
     return optimizer
 
 
+class _PlainDataUnpickler(pickle.Unpickler):  # nosec B301 - find_class refuses every global
+    """Unpickler for meta.pkl: plain dict/str/int data only, no classes or callables."""
+
+    def find_class(self, module, name):
+        raise pickle.UnpicklingError(f"meta.pkl may not reference {module}.{name}")
+
+
+def load_meta(meta_path):
+    """Load a dataset meta.pkl ({vocab_size, stoi, itos}) without executing pickled code."""
+    with open(meta_path, "rb") as f:
+        return _PlainDataUnpickler(f).load()
+
+
 def read_meta_vocab_size(data_dir):
     """Return vocab_size from <data_dir>/meta.pkl (char-level datasets), or None if absent.
 
-    meta.pkl is produced locally by the data prepare scripts; do not point this at untrusted files.
+    Uses load_meta, so a tampered meta.pkl cannot execute code.
     """
     meta_path = os.path.join(data_dir, "meta.pkl")
     if not os.path.exists(meta_path):
         return None
-    with open(meta_path, "rb") as f:
-        meta = pickle.load(f)  # nosec B301 - locally generated file, see docstring
+    meta = load_meta(meta_path)
     print(f"found vocab_size = {meta['vocab_size']} (inside {meta_path})")
     return meta["vocab_size"]

@@ -5,7 +5,7 @@ Will save train.bin, val.bin containing the ids, and meta.pkl containing the
 encoder and decoder and some other related info.
 """
 import os
-import pickle
+import pickle  # nosec B403 - only pickle.dump (writes meta.pkl); reads go through init_from.load_meta
 import requests
 import numpy as np
 

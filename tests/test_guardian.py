@@ -193,3 +193,39 @@ def test_main_uses_meta_vocab_and_compile_flag():
                for c in calls)
     compile_opt = [c for c in calls if c.args and getattr(c.args[0], "value", None) == "--compile"]
     assert compile_opt and any(k.arg == "action" and k.value.value == "store_true" for k in compile_opt[0].keywords)
+
+
+def test_from_pretrained_requests_safetensors(monkeypatch):
+    # G-018: GPT-2 weights must not be loaded from pickled pytorch_model.bin files
+    import sys
+    import types
+
+    seen = {}
+
+    class _Stop(Exception):
+        pass
+
+    class FakeHF:
+        @staticmethod
+        def from_pretrained(name, **kwargs):
+            seen.update(kwargs, name=name)
+            raise _Stop
+
+    monkeypatch.setitem(sys.modules, "transformers", types.SimpleNamespace(GPT2LMHeadModel=FakeHF))
+    with pytest.raises(_Stop):
+        GPT.from_pretrained("gpt2")
+    assert seen["name"] == "gpt2" and seen.get("use_safetensors") is True
+
+
+def test_load_meta_rejects_code_but_reads_plain_meta(tmp_path):
+    # meta.pkl is only ever a dict of str/int; refuse any pickled globals (B301)
+    from nanoGPT.model.init_from import load_meta
+
+    good = {"vocab_size": 2, "stoi": {"a": 0, "b": 1}, "itos": {0: "a", 1: "b"}}
+    with open(tmp_path / "meta.pkl", "wb") as f:
+        pickle.dump(good, f)
+    assert load_meta(str(tmp_path / "meta.pkl")) == good
+    with open(tmp_path / "evil.pkl", "wb") as f:
+        pickle.dump({"vocab_size": _Evil()}, f)
+    with pytest.raises(pickle.UnpicklingError):
+        load_meta(str(tmp_path / "evil.pkl"))

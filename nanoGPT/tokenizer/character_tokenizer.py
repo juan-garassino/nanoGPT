@@ -1,6 +1,6 @@
 import os
 import numpy as np
-import pickle
+import pickle  # nosec B403 - only pickle.dump (writes meta.pkl); reads go through init_from.load_meta
 
 from nanoGPT.sourcing.sourcing import sourcing_data
 

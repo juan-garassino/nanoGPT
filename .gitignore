@@ -9,3 +9,8 @@ __pycache__/
 *.pyc
 input.txt
 .venv/
+
+# local env, logs and build metadata
+.env
+*.log
+*.egg-info/

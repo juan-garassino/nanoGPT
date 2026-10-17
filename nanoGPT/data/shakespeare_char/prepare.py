@@ -5,7 +5,7 @@ Will save train.bin, val.bin containing the ids, and meta.pkl containing the
 encoder and decoder and some other related info.
 """
 import os
-import pickle
+import pickle  # nosec B403 - only pickle.dump (writes meta.pkl); reads go through init_from.load_meta
 import requests
 import numpy as np
 
@@ -14,7 +14,7 @@ input_file_path = os.path.join(os.path.dirname(__file__), "input.txt")
 if not os.path.exists(input_file_path):
     data_url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
     with open(input_file_path, "w") as f:
-        f.write(requests.get(data_url).text)
+        f.write(requests.get(data_url, timeout=60).text)
 
 with open(input_file_path, "r") as f:
     data = f.read()

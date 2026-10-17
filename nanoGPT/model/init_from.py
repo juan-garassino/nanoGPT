@@ -1,6 +1,8 @@
 from nanoGPT.model.model import GPT, GPTConfig
-import torch
 import os
+import pickle  # nosec B403 - only used through _PlainDataUnpickler below
+
+import torch
 
 def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=None):
     if init_from == "scratch":
@@ -18,7 +20,7 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
         print(f"Resuming training from {out_dir}")
         # Resume training from a checkpoint
         ckpt_path = os.path.join(out_dir, "ckpt.pt")
-        checkpoint = torch.load(ckpt_path, map_location=device)
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
         checkpoint_model_args = checkpoint["model_args"]
         # Force these config attributes to be equal; otherwise, we can't even resume training
         # The rest of the attributes (e.g., dropout) can stay as desired from the command line
@@ -47,3 +49,36 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
         for k in ["n_layer", "n_head", "n_embd", "block_size", "bias", "vocab_size"]:
             model_args[k] = getattr(model.config, k)
         return model, model_args
+
+
+def restore_optimizer(optimizer, out_dir, device):
+    """Load the optimizer state saved in <out_dir>/ckpt.pt (AdamW moments) into `optimizer`."""
+    checkpoint = torch.load(os.path.join(out_dir, "ckpt.pt"), map_location=device, weights_only=True)
+    optimizer.load_state_dict(checkpoint["optimizer"])
+    return optimizer
+
+
+class _PlainDataUnpickler(pickle.Unpickler):  # nosec B301 - find_class refuses every global
+    """Unpickler for meta.pkl: plain dict/str/int data only, no classes or callables."""
+
+    def find_class(self, module, name):
+        raise pickle.UnpicklingError(f"meta.pkl may not reference {module}.{name}")
+
+
+def load_meta(meta_path):
+    """Load a dataset meta.pkl ({vocab_size, stoi, itos}) without executing pickled code."""
+    with open(meta_path, "rb") as f:
+        return _PlainDataUnpickler(f).load()
+
+
+def read_meta_vocab_size(data_dir):
+    """Return vocab_size from <data_dir>/meta.pkl (char-level datasets), or None if absent.
+
+    Uses load_meta, so a tampered meta.pkl cannot execute code.
+    """
+    meta_path = os.path.join(data_dir, "meta.pkl")
+    if not os.path.exists(meta_path):
+        return None
+    meta = load_meta(meta_path)
+    print(f"found vocab_size = {meta['vocab_size']} (inside {meta_path})")
+    return meta["vocab_size"]

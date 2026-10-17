@@ -9,7 +9,7 @@ import numpy as np
 
 from nanoGPT.sourcing.sourcing import sourcing_data, get_batch
 from nanoGPT.model.model import GPT, GPTConfig
-from nanoGPT.model.init_from import initialize_model
+from nanoGPT.model.init_from import initialize_model, restore_optimizer, read_meta_vocab_size
 from nanoGPT.model.tools import get_lr, estimate_loss
 from nanoGPT.heatmaps.heatmaps import plot_heatmaps
 
@@ -32,6 +32,7 @@ def parse_args():
 
     # Data
     parser.add_argument("--dataset", type=str, default="shakespeare_char", help="Dataset name")
+    parser.add_argument("--data_dir", type=str, default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "nanoGPT", "data"), help="Root folder holding <dataset>/train.bin and val.bin")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=5 * 8, help="Number of gradient accumulation steps")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size") # 12
     parser.add_argument("--block_size", type=int, default=8, help="Block size") # 1024
@@ -65,7 +66,7 @@ def parse_args():
 
     parser.add_argument("--dtype", type=str, default="float16", help="Data type")
     #parser.add_argument("--dtype", type=str, default="bfloat16" if torch.cuda.is_bf16_supported() else "float16", help="Data type")
-    parser.add_argument("--compile", action="store_false", help="Compile the model using PyTorch 2.0") # TRUE
+    parser.add_argument("--compile", action="store_true", help="Compile the model with torch.compile (PyTorch 2.0+)")
 
     return parser.parse_args()
 
@@ -73,15 +74,8 @@ args = parse_args()
 
 print(args)
 
-config_keys = [
-    k
-    for k, v in globals().items()
-    if not k.startswith("_") and isinstance(v, (int, float, bool, str))
-]
-
-exec(open(f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/configurator/configurator.py").read())  # overrides from command line or config file
-
-config = {k: globals()[k] for k in config_keys}  # will be useful for logging
+# NOTE: overrides now come from argparse; the old exec() of a hardcoded configurator path was removed
+config = vars(args)  # will be useful for logging
 
 ddp = int(os.environ.get("RANK", -1)) != -1  # is this a ddp run?
 
@@ -90,8 +84,8 @@ if ddp:
     ddp_rank = int(os.environ["RANK"])
     ddp_local_rank = int(os.environ["LOCAL_RANK"])
     ddp_world_size = int(os.environ["WORLD_SIZE"])
-    device = f"cuda:{ddp_local_rank}"
-    torch.cuda.set_device(device)
+    args.device = f"cuda:{ddp_local_rank}"
+    torch.cuda.set_device(args.device)
     master_process = ddp_rank == 0  # this process will do logging, checkpointing etc.
     seed_offset = ddp_rank  # each process gets a different seed
     # world_size number of processes will be training simultaneously, so we can scale
@@ -140,17 +134,32 @@ model_args = dict(
     dropout=args.dropout,
 )  # start with model_args from command line
 
-if args.init_from == 'scratch':
-    model, model_args = initialize_model(args.init_from, args.out_dir, args.device, model_args)
-
 if args.init_from == 'resume':
-    model, model_args, best_val_loss, iter_num = initialize_model(args.init_from, args.out_dir, args.device, model_args)
+    # initialize_model returns (model, model_args, iter_num, best_val_loss) for resume
+    model, model_args, iter_num, best_val_loss = initialize_model(args.init_from, args.out_dir, args.device, model_args)
+else:  # 'scratch' or 'gpt2*'
+    # char-level datasets ship a meta.pkl with their (small) vocab size
+    meta_vocab_size = read_meta_vocab_size(os.path.join(args.data_dir, args.dataset))
+    model, model_args = initialize_model(args.init_from, args.out_dir, args.device, model_args, meta_vocab_size)
+
+model.to(args.device)
+os.makedirs(args.out_dir, exist_ok=True)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == "float16"))
 
 # optimizer
 optimizer = model.configure_optimizers(args.weight_decay, args.learning_rate, (args.beta1, args.beta2), device_type)
+if args.init_from == "resume":
+    restore_optimizer(optimizer, args.out_dir, args.device)
+
+if args.compile:
+    print("compiling the model... (takes a ~minute)")
+    model = torch.compile(model)
+
+# wrap model into DDP container (raw_model below unwraps it again)
+if ddp:
+    model = DDP(model, device_ids=[ddp_local_rank])
 
 local_iter_num = 0  # number of iterations in the lifetime of this process
 
@@ -162,7 +171,7 @@ if args.wandb_log and master_process:
 
     wandb.init(project=args.wandb_project, name=args.wandb_run_name, config=config)
 
-data_dir = os.path.join(f"{os.environ.get('HOME')}/Code/juan-garassino/mySandbox/nanoGPT/nanoGPT/data", args.dataset)
+data_dir = os.path.join(args.data_dir, args.dataset)
 
 train_data = np.memmap(os.path.join(data_dir, "train.bin"), dtype=np.uint16, mode="r")
 
@@ -180,7 +189,11 @@ print('loop')
 
 while True:
     # determine and set the learning rate for this iteration
-    lr = get_lr(iter_num) if args.decay_lr else args.learning_rate
+    lr = (
+        get_lr(iter_num, args.warmup_iters, args.learning_rate, args.lr_decay_iters, args.min_lr)
+        if args.decay_lr
+        else args.learning_rate
+    )
 
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
@@ -278,12 +291,9 @@ while True:
 
     local_iter_num += 1
 
-    # Access the weights from the model
-
-    weights = model.state_dict()
-
-    # Plot the heatmaps
-    plot_heatmaps(weights, "output_folder")
+    # Plot the weight heatmaps (expensive: only at eval checkpoints, on the master process)
+    if master_process and iter_num % args.eval_interval == 0:
+        plot_heatmaps(raw_model.state_dict(), "output_folder")
 
     # termination conditions
     if iter_num > args.max_iters:

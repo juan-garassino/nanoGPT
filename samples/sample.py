@@ -2,11 +2,13 @@
 Sample from a trained model
 """
 import os
-import pickle
 from contextlib import nullcontext
 import torch
 import tiktoken
-from model.model import GPTConfig, GPT
+from nanoGPT.model.model import GPTConfig, GPT
+from nanoGPT.model.init_from import load_meta as read_meta_file
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # -----------------------------------------------------------------------------
 init_from = (
@@ -28,7 +30,7 @@ dtype = (
     "bfloat16" if torch.cuda.is_bf16_supported() else "float16"
 )  # 'float32' or 'bfloat16' or 'float16'
 compile = False  # use PyTorch 2.0 to compile the model to be faster
-exec(open("configurator.py").read())  # overrides from command line or config file
+exec(open(os.path.join(REPO_ROOT, "nanoGPT", "configurator", "configurator.py")).read())  # nosec B102 - repo-local configurator (G-009)
 # -----------------------------------------------------------------------------
 
 torch.manual_seed(seed)
@@ -51,7 +53,7 @@ ctx = (
 if init_from == "resume":
     # init from a model saved in a specific directory
     ckpt_path = os.path.join(out_dir, "ckpt.pt")
-    checkpoint = torch.load(ckpt_path, map_location=device)
+    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
     gptconf = GPTConfig(**checkpoint["model_args"])
     model = GPT(gptconf)
     state_dict = checkpoint["model"]
@@ -76,12 +78,12 @@ if (
     and "config" in checkpoint
     and "dataset" in checkpoint["config"]
 ):  # older checkpoints might not have these...
-    meta_path = os.path.join("data", checkpoint["config"]["dataset"], "meta.pkl")
+    data_dir = checkpoint["config"].get("data_dir", os.path.join(REPO_ROOT, "nanoGPT", "data"))
+    meta_path = os.path.join(data_dir, checkpoint["config"]["dataset"], "meta.pkl")
     load_meta = os.path.exists(meta_path)
 if load_meta:
     print(f"Loading meta from {meta_path}...")
-    with open(meta_path, "rb") as f:
-        meta = pickle.load(f)
+    meta = read_meta_file(meta_path)
     # TODO want to make this more general to arbitrary encoder/decoder schemes
     stoi, itos = meta["stoi"], meta["itos"]
     encode = lambda s: [stoi[c] for c in s]

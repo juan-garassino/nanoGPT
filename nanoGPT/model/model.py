@@ -279,7 +279,8 @@ class GPT(nn.Module):
         ]  # discard this mask / buffer, not a param
 
         # init a huggingface/transformers model
-        model_hf = GPT2LMHeadModel.from_pretrained(model_type)
+        # safetensors only: never unpickle a downloaded pytorch_model.bin
+        model_hf = GPT2LMHeadModel.from_pretrained(model_type, use_safetensors=True)
         sd_hf = model_hf.state_dict()
 
         # copy while ensuring all of the parameters are aligned and match in names and shapes

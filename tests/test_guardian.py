@@ -138,3 +138,37 @@ def test_plot_heatmaps_handles_real_state_dict(tmp_path):
         out = tmp_path / f"L{n_layer}"
         plot_heatmaps(model.state_dict(), str(out), figsize=(4, 4), dpi=20)
         assert len(list(out.glob("heatmaps*.png"))) == 1
+
+
+def test_sample_script_runs_from_resume_checkpoint(tmp_path):
+    # run #2: samples/sample.py had a broken import, a cwd-relative configurator path and
+    # ignored the checkpoint's data_dir when looking for meta.pkl
+    import subprocess
+    import sys
+
+    _save_ckpt(tmp_path)
+    ckpt_path = os.path.join(tmp_path, "ckpt.pt")
+    ckpt = torch.load(ckpt_path, weights_only=True)
+    ckpt["config"].update(dataset="tiny", data_dir=str(tmp_path))
+    torch.save(ckpt, ckpt_path)
+    os.makedirs(tmp_path / "tiny")
+    chars = "abcdefghijk"
+    with open(tmp_path / "tiny" / "meta.pkl", "wb") as f:
+        pickle.dump({"vocab_size": 11, "stoi": {c: i for i, c in enumerate(chars)},
+                     "itos": dict(enumerate(chars))}, f)
+    res = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "samples", "sample.py"), "--device=cpu", "--dtype=float32",
+         f"--out_dir={tmp_path}", "--num_samples=1", "--max_new_tokens=3", "--start=ab"],
+        cwd=str(tmp_path), env=dict(os.environ, PYTHONPATH=ROOT), capture_output=True, text=True, timeout=120,
+    )
+    assert res.returncode == 0, res.stderr[-2000:]
+    assert "Loading meta" in res.stdout
+
+
+@pytest.mark.parametrize("rel", ["samples/bench.py", "samples/sample.py", "nanoGPT/trainer/trainer.py"])
+def test_scripts_import_package_and_resolve_configurator(rel):
+    # `from model.model import ...` and exec(open("configurator.py")) only worked from one cwd
+    with open(os.path.join(ROOT, rel)) as f:
+        src = f.read()
+    assert "from model.model import" not in src
+    assert 'open("configurator.py")' not in src

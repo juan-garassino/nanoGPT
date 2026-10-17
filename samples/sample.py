@@ -6,7 +6,9 @@ import pickle
 from contextlib import nullcontext
 import torch
 import tiktoken
-from model.model import GPTConfig, GPT
+from nanoGPT.model.model import GPTConfig, GPT
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # -----------------------------------------------------------------------------
 init_from = (
@@ -28,7 +30,7 @@ dtype = (
     "bfloat16" if torch.cuda.is_bf16_supported() else "float16"
 )  # 'float32' or 'bfloat16' or 'float16'
 compile = False  # use PyTorch 2.0 to compile the model to be faster
-exec(open("configurator.py").read())  # overrides from command line or config file
+exec(open(os.path.join(REPO_ROOT, "nanoGPT", "configurator", "configurator.py")).read())  # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
 torch.manual_seed(seed)
@@ -76,7 +78,8 @@ if (
     and "config" in checkpoint
     and "dataset" in checkpoint["config"]
 ):  # older checkpoints might not have these...
-    meta_path = os.path.join("data", checkpoint["config"]["dataset"], "meta.pkl")
+    data_dir = checkpoint["config"].get("data_dir", os.path.join(REPO_ROOT, "nanoGPT", "data"))
+    meta_path = os.path.join(data_dir, checkpoint["config"]["dataset"], "meta.pkl")
     load_meta = os.path.exists(meta_path)
 if load_meta:
     print(f"Loading meta from {meta_path}...")

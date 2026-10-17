@@ -27,7 +27,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
-from model.model import GPTConfig, GPT
+from nanoGPT.model.model import GPTConfig, GPT
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -83,7 +83,7 @@ config_keys = [
     for k, v in globals().items()
     if not k.startswith("_") and isinstance(v, (int, float, bool, str))
 ]
-exec(open("configurator.py").read())  # overrides from command line or config file
+exec(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "configurator", "configurator.py")).read())  # overrides from command line or config file
 
 config = {k: globals()[k] for k in config_keys}  # will be useful for logging
 # -----------------------------------------------------------------------------

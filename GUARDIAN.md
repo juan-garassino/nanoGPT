@@ -38,6 +38,7 @@ Automated security & bug guardian ledger for this repo. Branch: `claude/guardian
 | G-015 | High | Bug: DDP runs never wrapped the model in `DDP` (`model.module` AttributeError) and ignored the per-rank `cuda:N` device | main.py | fixed | 2026-10-17 |
 | G-016 | Low | Bug: `sourcing_data(folder)` concatenated files in `os.listdir` order (filesystem-dependent train/val split) with locale-default encoding | sourcing.py | fixed (sorted, utf-8) | 2026-10-17 |
 | G-017 | Low | Bug: `main.py` never reads `meta.pkl`, so char-level datasets train with vocab 50304; `--compile` flag is parsed but unused | main.py | open | 2026-10-17 |
+| G-019 | Medium | Bug: `samples/sample.py`, `samples/bench.py`, `trainer.py` imported `model.model` and exec'd a cwd-relative `configurator.py` (ModuleNotFoundError / FileNotFoundError); sample.py ignored the checkpoint's `data_dir` for `meta.pkl` | samples/*.py, trainer.py | fixed | 2026-10-17 |
 | G-018 | Medium | `from_pretrained` without revision pin (B615) | model.py | open | 2026-10-17 |
 
 ## Metrics
@@ -47,7 +48,7 @@ Automated security & bug guardian ledger for this repo. Branch: `claude/guardian
 | Open vulns crit/high/med/low (bandit + pip-audit) | run #1: 0/0/16/21 -> 0/0/8/21; run #2: 0/0/8/21 -> 0/0/8/21 (pip-audit requirements + uv.lock: 0) |
 | Known bugs (high) | run #1: 2 -> 0; run #2: 2 -> 0 |
 | Failing tests | run #2: 0 (new repro tests failed before the fixes) | 0 |
-| Test count | run #1: 0 -> 6; run #2: 6 | 10 |
+| Test count | run #1: 0 -> 6; run #2: 6 | 14 |
 | Train smoke (3 iters + resume, CPU) | crashed at iter 0 (heatmaps IndexError) | passes |
 | Lint (black) | not run in CI | not changed |
 | Secrets found (gitleaks history + worktree) | 0 | 0 |
@@ -78,4 +79,4 @@ Automated security & bug guardian ledger for this repo. Branch: `claude/guardian
 ## Log
 
 - 2026-10-15 run #1: first guardian run. Fixed 2 high bugs in main.py (resume ordering, get_lr call), removed hardcoded exec/paths, added weights_only + request timeouts, bumped multidict in uv.lock, untracked env/log/egg-info files, added 6 tests. No secrets found.
-- 2026-10-17 run #2: no PR review feedback, no CI configured. Scans clean (pip-audit 0 on requirements + uv.lock, no secrets, bandit unchanged). Fixed 4 bugs with failing-first tests: heatmap grid IndexError that crashed training at iter 0 (G-013), missing DDP wrap/device (G-015), optimizer state not restored on resume (G-014), nondeterministic folder sourcing (G-016); heatmaps now repo-relative and only at eval_interval (G-012). Tests 6 -> 10; CPU train+resume smoke passes.
+- 2026-10-17 run #2: no PR review feedback, no CI configured. Scans clean (pip-audit 0 on requirements + uv.lock, no secrets, bandit unchanged). Fixed 4 bugs with failing-first tests: heatmap grid IndexError that crashed training at iter 0 (G-013), missing DDP wrap/device (G-015), optimizer state not restored on resume (G-014), nondeterministic folder sourcing (G-016), broken imports/configurator paths in sample/bench/trainer scripts (G-019, sample.py now has a subprocess smoke test); heatmaps now repo-relative and only at eval_interval (G-012). Tests 6 -> 14; CPU train+resume smoke passes.

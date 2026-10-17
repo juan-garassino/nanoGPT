@@ -172,3 +172,24 @@ def test_scripts_import_package_and_resolve_configurator(rel):
         src = f.read()
     assert "from model.model import" not in src
     assert 'open("configurator.py")' not in src
+
+
+def test_read_meta_vocab_size(tmp_path):
+    # G-017: char-level datasets must train with the meta.pkl vocab, not 50304
+    from nanoGPT.model.init_from import read_meta_vocab_size
+
+    assert read_meta_vocab_size(str(tmp_path)) is None
+    with open(tmp_path / "meta.pkl", "wb") as f:
+        pickle.dump({"vocab_size": 65, "stoi": {}, "itos": {}}, f)
+    assert read_meta_vocab_size(str(tmp_path)) == 65
+
+
+def test_main_uses_meta_vocab_and_compile_flag():
+    tree = _main_tree()
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+    init_calls = [c for c in calls if getattr(c.func, "id", None) == "initialize_model"]
+    assert any(len(c.args) == 5 or any(k.arg == "meta_vocab_size" for k in c.keywords) for c in init_calls)
+    assert any(getattr(c.func, "attr", None) == "compile" and getattr(c.func.value, "id", None) == "torch"
+               for c in calls)
+    compile_opt = [c for c in calls if c.args and getattr(c.args[0], "value", None) == "--compile"]
+    assert compile_opt and any(k.arg == "action" and k.value.value == "store_true" for k in compile_opt[0].keywords)

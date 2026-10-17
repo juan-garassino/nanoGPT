@@ -1,6 +1,8 @@
 from nanoGPT.model.model import GPT, GPTConfig
-import torch
 import os
+import pickle  # nosec B403 - only reads the meta.pkl written by our own prepare scripts
+
+import torch
 
 def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=None):
     if init_from == "scratch":
@@ -54,3 +56,17 @@ def restore_optimizer(optimizer, out_dir, device):
     checkpoint = torch.load(os.path.join(out_dir, "ckpt.pt"), map_location=device, weights_only=True)
     optimizer.load_state_dict(checkpoint["optimizer"])
     return optimizer
+
+
+def read_meta_vocab_size(data_dir):
+    """Return vocab_size from <data_dir>/meta.pkl (char-level datasets), or None if absent.
+
+    meta.pkl is produced locally by the data prepare scripts; do not point this at untrusted files.
+    """
+    meta_path = os.path.join(data_dir, "meta.pkl")
+    if not os.path.exists(meta_path):
+        return None
+    with open(meta_path, "rb") as f:
+        meta = pickle.load(f)  # nosec B301 - locally generated file, see docstring
+    print(f"found vocab_size = {meta['vocab_size']} (inside {meta_path})")
+    return meta["vocab_size"]

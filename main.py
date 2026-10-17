@@ -9,7 +9,7 @@ import numpy as np
 
 from nanoGPT.sourcing.sourcing import sourcing_data, get_batch
 from nanoGPT.model.model import GPT, GPTConfig
-from nanoGPT.model.init_from import initialize_model, restore_optimizer
+from nanoGPT.model.init_from import initialize_model, restore_optimizer, read_meta_vocab_size
 from nanoGPT.model.tools import get_lr, estimate_loss
 from nanoGPT.heatmaps.heatmaps import plot_heatmaps
 
@@ -66,7 +66,7 @@ def parse_args():
 
     parser.add_argument("--dtype", type=str, default="float16", help="Data type")
     #parser.add_argument("--dtype", type=str, default="bfloat16" if torch.cuda.is_bf16_supported() else "float16", help="Data type")
-    parser.add_argument("--compile", action="store_false", help="Compile the model using PyTorch 2.0") # TRUE
+    parser.add_argument("--compile", action="store_true", help="Compile the model with torch.compile (PyTorch 2.0+)")
 
     return parser.parse_args()
 
@@ -138,7 +138,9 @@ if args.init_from == 'resume':
     # initialize_model returns (model, model_args, iter_num, best_val_loss) for resume
     model, model_args, iter_num, best_val_loss = initialize_model(args.init_from, args.out_dir, args.device, model_args)
 else:  # 'scratch' or 'gpt2*'
-    model, model_args = initialize_model(args.init_from, args.out_dir, args.device, model_args)
+    # char-level datasets ship a meta.pkl with their (small) vocab size
+    meta_vocab_size = read_meta_vocab_size(os.path.join(args.data_dir, args.dataset))
+    model, model_args = initialize_model(args.init_from, args.out_dir, args.device, model_args, meta_vocab_size)
 
 model.to(args.device)
 os.makedirs(args.out_dir, exist_ok=True)
@@ -150,6 +152,10 @@ scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == "float16"))
 optimizer = model.configure_optimizers(args.weight_decay, args.learning_rate, (args.beta1, args.beta2), device_type)
 if args.init_from == "resume":
     restore_optimizer(optimizer, args.out_dir, args.device)
+
+if args.compile:
+    print("compiling the model... (takes a ~minute)")
+    model = torch.compile(model)
 
 # wrap model into DDP container (raw_model below unwraps it again)
 if ddp:

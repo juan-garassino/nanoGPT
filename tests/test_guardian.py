@@ -87,3 +87,54 @@ def test_main_unpacks_resume_in_return_order():
             assert names == ["model", "model_args", "iter_num", "best_val_loss"]
             return
     pytest.fail("resume branch of initialize_model not found in main.py")
+
+
+def test_restore_optimizer_loads_checkpoint_state(tmp_path):
+    # run #2: resume used to drop the AdamW moments saved in ckpt.pt
+    from nanoGPT.model.init_from import restore_optimizer
+
+    args = dict(TINY, vocab_size=11)
+    model = GPT(GPTConfig(**args))
+    opt = model.configure_optimizers(0.1, 1e-3, (0.9, 0.95), "cpu")
+    x = torch.randint(0, 11, (2, 8))
+    model(x, x)[1].backward()
+    opt.step()
+    torch.save({"optimizer": opt.state_dict()}, os.path.join(tmp_path, "ckpt.pt"))
+
+    fresh = model.configure_optimizers(0.1, 1e-3, (0.9, 0.95), "cpu")
+    assert not fresh.state_dict()["state"]
+    restore_optimizer(fresh, str(tmp_path), "cpu")
+    assert fresh.state_dict()["state"].keys() == opt.state_dict()["state"].keys()
+
+
+def test_main_restores_optimizer_and_wraps_ddp():
+    calls = [n for n in ast.walk(_main_tree()) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+    names = {c.func.id for c in calls}
+    assert "restore_optimizer" in names  # resume keeps optimizer state
+    assert "DDP" in names  # raw_model = model.module needs a DDP wrapper
+
+
+def test_sourcing_folder_order_is_deterministic(tmp_path, monkeypatch):
+    # os.listdir order is filesystem-dependent; the 90/10 split must not depend on it
+    from nanoGPT.sourcing import sourcing
+
+    for name, text in [("a.txt", "AAA"), ("b.txt", "ñBB"), ("c.txt", "CCC")]:
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    real = os.listdir
+    monkeypatch.setattr(sourcing.os, "listdir", lambda p: list(reversed(sorted(real(p)))))
+    assert sourcing.sourcing_data(str(tmp_path)) == "AAAñBBCCC"
+
+
+def test_plot_heatmaps_handles_real_state_dict(tmp_path):
+    # run #2: the grid math indexed past num_heads columns (IndexError on any real model)
+    pytest.importorskip("matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from nanoGPT.heatmaps.heatmaps import plot_heatmaps
+
+    for n_layer in (1, 2, 6):
+        model = GPT(GPTConfig(**dict(TINY, n_layer=n_layer, vocab_size=11)))
+        out = tmp_path / f"L{n_layer}"
+        plot_heatmaps(model.state_dict(), str(out), figsize=(4, 4), dpi=20)
+        assert len(list(out.glob("heatmaps*.png"))) == 1

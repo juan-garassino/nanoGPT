@@ -9,7 +9,7 @@ import numpy as np
 
 from nanoGPT.sourcing.sourcing import sourcing_data, get_batch
 from nanoGPT.model.model import GPT, GPTConfig
-from nanoGPT.model.init_from import initialize_model
+from nanoGPT.model.init_from import initialize_model, restore_optimizer
 from nanoGPT.model.tools import get_lr, estimate_loss
 from nanoGPT.heatmaps.heatmaps import plot_heatmaps
 
@@ -84,8 +84,8 @@ if ddp:
     ddp_rank = int(os.environ["RANK"])
     ddp_local_rank = int(os.environ["LOCAL_RANK"])
     ddp_world_size = int(os.environ["WORLD_SIZE"])
-    device = f"cuda:{ddp_local_rank}"
-    torch.cuda.set_device(device)
+    args.device = f"cuda:{ddp_local_rank}"
+    torch.cuda.set_device(args.device)
     master_process = ddp_rank == 0  # this process will do logging, checkpointing etc.
     seed_offset = ddp_rank  # each process gets a different seed
     # world_size number of processes will be training simultaneously, so we can scale
@@ -148,6 +148,12 @@ scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == "float16"))
 
 # optimizer
 optimizer = model.configure_optimizers(args.weight_decay, args.learning_rate, (args.beta1, args.beta2), device_type)
+if args.init_from == "resume":
+    restore_optimizer(optimizer, args.out_dir, args.device)
+
+# wrap model into DDP container (raw_model below unwraps it again)
+if ddp:
+    model = DDP(model, device_ids=[ddp_local_rank])
 
 local_iter_num = 0  # number of iterations in the lifetime of this process
 
@@ -279,12 +285,9 @@ while True:
 
     local_iter_num += 1
 
-    # Access the weights from the model
-
-    weights = model.state_dict()
-
-    # Plot the heatmaps
-    plot_heatmaps(weights, "output_folder")
+    # Plot the weight heatmaps (expensive: only at eval checkpoints, on the master process)
+    if master_process and iter_num % args.eval_interval == 0:
+        plot_heatmaps(raw_model.state_dict(), "output_folder")
 
     # termination conditions
     if iter_num > args.max_iters:

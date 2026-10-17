@@ -47,3 +47,10 @@ def initialize_model(init_from, out_dir, device, model_args, meta_vocab_size=Non
         for k in ["n_layer", "n_head", "n_embd", "block_size", "bias", "vocab_size"]:
             model_args[k] = getattr(model.config, k)
         return model, model_args
+
+
+def restore_optimizer(optimizer, out_dir, device):
+    """Load the optimizer state saved in <out_dir>/ckpt.pt (AdamW moments) into `optimizer`."""
+    checkpoint = torch.load(os.path.join(out_dir, "ckpt.pt"), map_location=device, weights_only=True)
+    optimizer.load_state_dict(checkpoint["optimizer"])
+    return optimizer

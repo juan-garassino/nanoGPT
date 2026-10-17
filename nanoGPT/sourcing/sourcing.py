@@ -17,10 +17,11 @@ def sourcing_data(txt_folder=None):
     else:
         # Load data from text files in the given folder
         data = ""
-        for file_name in os.listdir(txt_folder):
+        # sorted: os.listdir order is filesystem-dependent and would change the train/val split
+        for file_name in sorted(os.listdir(txt_folder)):
             file_path = os.path.join(txt_folder, file_name)
             if os.path.isfile(file_path) and file_name.endswith(".txt"):
-                with open(file_path, "r") as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     data += f.read()
 
     return data

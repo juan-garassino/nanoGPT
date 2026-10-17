@@ -1,4 +1,5 @@
 import os
+import math
 import datetime
 import matplotlib.pyplot as plt
 
@@ -6,7 +7,10 @@ def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle
                   row_spacing=0.2, column_spacing=0.2, title_spacing=0.4, subtitle_spacing=0.3, tick_font_size=8):
     # Create the output folder if it doesn't exist
 
-    output_path = os.path.join(os.environ.get('HOME'), 'Code', 'juan-garassino', 'mySandbox', 'nanoGPT', 'plots', output_folder)
+    # relative folders live under <repo>/plots (absolute folders are used as-is)
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    output_dir = os.path.join(repo_root, 'plots', output_folder)
+    output_path = output_dir
 
     os.makedirs(output_path, exist_ok=True)
 
@@ -18,14 +22,15 @@ def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle
 
     # Calculate the number of linear layers and heads
 
-    num_layers = len(linear_layer_keys) // 4
+    # one panel per weight matrix, num_heads panels per row
+    num_layers = max(1, math.ceil(len(linear_layer_keys) / num_heads))
 
     print(num_layers)
 
     print(num_heads)
 
     # Create the subplot grid
-    fig, axes = plt.subplots(num_layers, num_heads, figsize=figsize, dpi=dpi)
+    fig, axes = plt.subplots(num_layers, num_heads, figsize=figsize, dpi=dpi, squeeze=False)
 
     # Adjust the row and column spacing
     fig.subplots_adjust(hspace=row_spacing, wspace=column_spacing, top=1 - title_spacing / figsize[1])
@@ -45,8 +50,8 @@ def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle
         weights_np = weights_2d.detach().numpy()
 
         # Determine the layer and head indices
-        layer_idx = i % num_layers
-        head_idx = i // num_layers
+        layer_idx = i // num_heads
+        head_idx = i % num_heads
 
         # Plot the heatmap in the corresponding subplot
         axes[layer_idx, head_idx].imshow(weights_np, cmap='hot')
@@ -61,7 +66,7 @@ def plot_heatmaps(data, output_folder, num_heads=4, title_font_size=12, subtitle
 
     # Save the plot with timestamp in the output folder
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    output_path = os.path.join(os.environ.get('HOME'), 'Code', 'juan-garassino', 'mySandbox', 'nanoGPT', 'plots', output_folder, f'heatmaps[{timestamp}].png')
+    output_path = os.path.join(output_dir, f'heatmaps[{timestamp}].png')
     plt.savefig(output_path, dpi=dpi)
     plt.close(fig)
 
